@@ -1,0 +1,28 @@
+# Gradle
+.gradle/
+build/
+.kotlin/
+# Local configuration (contains SDK path, machine-specific)
+/local.properties
+# IDE
+.idea/
+*.iml
+.vscode/
+# OS
+.DS_Store
+Thumbs.db
+# Android
+captures/
+.externalNativeBuild/
+.cxx/
+*.apk
+*.aab
+output.json
+# Room schema (keep schemas/ history instead of ignoring entirely; adjust as needed)
+# Keystore / secrets
+*.keystore
+*.jks
+# Runtime credentials — NEVER commit real school account credentials
+local.credentials.properties
+credentials/
+!credentials/.gitkeep

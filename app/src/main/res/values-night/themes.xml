@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.ClassIsland" parent="android:Theme.Material.NoActionBar" />
+    <!-- 全屏闹钟提醒（无状态栏，锁屏可显示） -->
+    <style name="Theme.ReminderAlarm" parent="android:Theme.Material.NoActionBar.Fullscreen" />
+</resources>

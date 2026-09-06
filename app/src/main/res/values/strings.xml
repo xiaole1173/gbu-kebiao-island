@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">课表小岛</string>
+    <string name="widget_description">显示今天日期、教学周与当前/下一节课</string>
+</resources>

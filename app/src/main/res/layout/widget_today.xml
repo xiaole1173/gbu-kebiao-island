@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 桌面小组件：今日课表 / 下一节课（纯 TextView，无 emoji） -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:padding="12dp"
+    android:background="@android:drawable/edit_text">
+
+    <TextView
+        android:id="@+id/widget_date"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:textColor="@android:color/secondary_text_light"
+        android:textSize="12sp"
+        android:text="日期" />
+
+    <TextView
+        android:id="@+id/widget_next_title"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:ellipsize="end"
+        android:maxLines="1"
+        android:textColor="@android:color/black"
+        android:textSize="16sp"
+        android:textStyle="bold"
+        android:text="暂无课程" />
+
+    <TextView
+        android:id="@+id/widget_next_detail"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:ellipsize="end"
+        android:maxLines="2"
+        android:textColor="@android:color/secondary_text_light"
+        android:textSize="12sp"
+        android:text="到「课表小岛」设置中同步课表" />
+
+    <TextView
+        android:id="@+id/widget_week"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:textColor="@android:color/tertiary_text_light"
+        android:textSize="11sp"
+        android:text="" />
+</LinearLayout>

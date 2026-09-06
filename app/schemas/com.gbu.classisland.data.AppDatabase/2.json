@@ -1,0 +1,180 @@
+{
+  "formatVersion": 1,
+  "database": {
+    "version": 2,
+    "identityHash": "f8e1c25fdb109e27f19408543ae22b52",
+    "entities": [
+      {
+        "tableName": "courses",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `name` TEXT NOT NULL, `teacher` TEXT NOT NULL, `location` TEXT NOT NULL, `dayOfWeek` INTEGER NOT NULL, `startSection` INTEGER NOT NULL, `endSection` INTEGER NOT NULL, `startWeek` INTEGER NOT NULL, `endWeek` INTEGER NOT NULL, `weekParity` INTEGER NOT NULL, `weeks` TEXT NOT NULL, `note` TEXT NOT NULL, `semesterId` TEXT NOT NULL, `source` TEXT NOT NULL, `externalId` TEXT NOT NULL)",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "name",
+            "columnName": "name",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "teacher",
+            "columnName": "teacher",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "location",
+            "columnName": "location",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "dayOfWeek",
+            "columnName": "dayOfWeek",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "startSection",
+            "columnName": "startSection",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "endSection",
+            "columnName": "endSection",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "startWeek",
+            "columnName": "startWeek",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "endWeek",
+            "columnName": "endWeek",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "weekParity",
+            "columnName": "weekParity",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "weeks",
+            "columnName": "weeks",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "note",
+            "columnName": "note",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "semesterId",
+            "columnName": "semesterId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "source",
+            "columnName": "source",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "externalId",
+            "columnName": "externalId",
+            "affinity": "TEXT",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_courses_semesterId",
+            "unique": false,
+            "columnNames": [
+              "semesterId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_courses_semesterId` ON `${TABLE_NAME}` (`semesterId`)"
+          },
+          {
+            "name": "index_courses_dayOfWeek",
+            "unique": false,
+            "columnNames": [
+              "dayOfWeek"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_courses_dayOfWeek` ON `${TABLE_NAME}` (`dayOfWeek`)"
+          }
+        ]
+      },
+      {
+        "tableName": "library_course",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`kcdm` TEXT NOT NULL, `kcmc` TEXT NOT NULL, `xf` REAL NOT NULL, `kcxzmc` TEXT, `kclbmc` TEXT, `pylx` TEXT, PRIMARY KEY(`kcdm`))",
+        "fields": [
+          {
+            "fieldPath": "kcdm",
+            "columnName": "kcdm",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "kcmc",
+            "columnName": "kcmc",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "xf",
+            "columnName": "xf",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "kcxzmc",
+            "columnName": "kcxzmc",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "kclbmc",
+            "columnName": "kclbmc",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "pylx",
+            "columnName": "pylx",
+            "affinity": "TEXT"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "kcdm"
+          ]
+        }
+      }
+    ],
+    "setupQueries": [
+      "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, 'f8e1c25fdb109e27f19408543ae22b52')"
+    ]
+  }
+}
