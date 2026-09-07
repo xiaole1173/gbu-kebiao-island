@@ -12,16 +12,27 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.gbu.classisland.navigation.AppNavHost
 import com.gbu.classisland.ui.screens.OnboardingScreen
 import com.gbu.classisland.ui.theme.ClassIslandTheme
+import com.gbu.classisland.update.UpdateManager
+import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -45,6 +56,61 @@ private fun FirstRunGateAndNav() {
         context.getSharedPreferences("first_run", Context.MODE_PRIVATE)
     }
     var guided by remember { mutableStateOf(prefs.getBoolean("guided", false)) }
+    val scope = rememberCoroutineScope()
+
+    // 启动自动检查更新（受 6 小时间隔限制，完成新手引导后才检查）
+    var updateInfo by remember { mutableStateOf<UpdateManager.UpdateInfo?>(null) }
+    var updateDownloading by remember { mutableStateOf(false) }
+    LaunchedEffect(guided) {
+        if (guided && UpdateManager.shouldAutoCheck(context)) {
+            val info = UpdateManager.checkLatest(context)
+            if (info != null && info.versionCode > UpdateManager.localVersionCode(context)) {
+                updateInfo = info
+            }
+        }
+    }
+
+    // 发现新版本弹窗
+    updateInfo?.let { info ->
+        AlertDialog(
+            onDismissRequest = { updateInfo = null },
+            title = { Text("发现新版本 ${info.versionName}") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        if (info.changelog.isBlank()) "有可用更新，是否立即更新？" else info.changelog,
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                    if (updateDownloading) {
+                        Text(
+                            "正在下载新版本…",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.outline,
+                            fontSize = 12.sp
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    updateInfo = null
+                    updateDownloading = true
+                    scope.launch {
+                        runCatching {
+                            val file = UpdateManager.download(context, info) { }
+                            if (!UpdateManager.install(context, file)) {
+                                UpdateManager.openInstallPermissionSettings(context)
+                            }
+                        }
+                        updateDownloading = false
+                    }
+                }) { Text("立即更新") }
+            },
+            dismissButton = {
+                TextButton(onClick = { updateInfo = null }) { Text("稍后") }
+            }
+        )
+    }
 
     if (!guided) {
         OnboardingScreen(

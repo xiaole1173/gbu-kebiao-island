@@ -348,9 +348,11 @@ fun TimetableGrid(
         computeLayout(courses, week, canvasPx, density)
     }
     val currentLayout by rememberUpdatedState(layout)
+    // 主题感知的文字色（深色模式下 Canvas 文字/线必须跟随 onSurface，否则黑字看不见）
+    val onSurface = MaterialTheme.colorScheme.onSurface
     // 预计算全部文本布局：重绘/切页动画时直接画缓存，不再逐格 re-measure（消除主线程文本测量卡顿）
-    val texts = remember(layout, sections, week, termStart, today) {
-        buildGridTexts(textMeasurer, layout, sections, week, termStart, today)
+    val texts = remember(layout, sections, week, termStart, today, onSurface) {
+        buildGridTexts(textMeasurer, layout, sections, week, termStart, today, onSurface)
     }
 
     Canvas(
@@ -377,7 +379,7 @@ fun TimetableGrid(
         }
 
         // 网格线画在最上层，保证格子结构始终清晰可见（线压在色块上）
-        drawGrid(layout.headerH, layout.rowHeaderW, layout.colW, layout.rowH, layout.dayRange.count(), layout.maxSection)
+        drawGrid(layout.headerH, layout.rowHeaderW, layout.colW, layout.rowH, layout.dayRange.count(), layout.maxSection, onSurface)
     }
 }
 
@@ -400,12 +402,15 @@ private fun buildGridTexts(
     sections: List<SectionTime>,
     week: Int,
     termStart: LocalDate?,
-    today: LocalDate
+    today: LocalDate,
+    onSurface: Color
 ): GridTexts {
+    val dim = onSurface.copy(alpha = 0.55f)
     val headerLabels = layout.dayRange.associateWith { day ->
         textMeasurer.measure(
             text = androidx.compose.ui.text.buildAnnotatedString { append(WEEK_LABELS[day - 1]) },
             style = androidx.compose.ui.text.TextStyle(
+                color = onSurface,
                 fontSize = 12.sp,
                 fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold
             )
@@ -415,20 +420,20 @@ private fun buildGridTexts(
         val date = termStart?.plusWeeks(week - 1L)?.plusDays((day - 1).toLong()) ?: return@mapNotNull null
         day to textMeasurer.measure(
             text = androidx.compose.ui.text.buildAnnotatedString { append("${date.monthValue}/${date.dayOfMonth}") },
-            style = androidx.compose.ui.text.TextStyle(fontSize = 10.sp, color = Color(0x99000000))
+            style = androidx.compose.ui.text.TextStyle(fontSize = 10.sp, color = dim)
         )
     }.toMap()
     val rowNumbers = (1..layout.maxSection).associateWith { s ->
         textMeasurer.measure(
             text = androidx.compose.ui.text.buildAnnotatedString { append("$s") },
-            style = androidx.compose.ui.text.TextStyle(fontSize = 10.sp)
+            style = androidx.compose.ui.text.TextStyle(fontSize = 10.sp, color = onSurface)
         )
     }
     val rowTimes = (1..layout.maxSection).mapNotNull { s ->
         val sec = sections.find { it.section == s } ?: return@mapNotNull null
         s to textMeasurer.measure(
             text = androidx.compose.ui.text.buildAnnotatedString { append("${sec.start}-${sec.end}") },
-            style = androidx.compose.ui.text.TextStyle(fontSize = 7.sp, color = Color(0x99000000))
+            style = androidx.compose.ui.text.TextStyle(fontSize = 7.sp, color = dim)
         )
     }.toMap()
 
@@ -517,9 +522,10 @@ private fun DrawScope.drawGrid(
     colW: Float,
     rowH: Float,
     colCount: Int,
-    maxSection: Int
+    maxSection: Int,
+    onSurface: Color
 ) {
-    val lineColor = Color(0x22000000)
+    val lineColor = onSurface.copy(alpha = 0.14f)
     // 竖线
     for (i in 0..colCount) {
         val x = rowHeaderW + i * colW

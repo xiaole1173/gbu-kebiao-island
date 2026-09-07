@@ -54,6 +54,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.gbu.classisland.update.UpdateManager
 
 /**
  * 全屏新手引导（首次进入显示，不是窗口弹窗）：
@@ -182,9 +183,14 @@ private fun PermissionStep(
     val checks by viewModel.reminderChecks.collectAsState()
     val fullScreen by viewModel.fullScreenEnabled.collectAsState()
     val batteryIgnored by viewModel.batteryOptimizationIgnored.collectAsState()
+    // 安装未知来源应用：从系统设置返回后刷新状态
+    var canInstall by remember { mutableStateOf(context.packageManager.canRequestPackageInstalls()) }
 
     // 从系统设置返回时刷新状态
-    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { viewModel.refreshReminderChecks() }
+    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
+        viewModel.refreshReminderChecks()
+        canInstall = context.packageManager.canRequestPackageInstalls()
+    }
 
     val notificationLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
@@ -241,6 +247,12 @@ private fun PermissionStep(
             desc = "设为「无限制」，避免后台被杀导致提醒失效",
             granted = batteryIgnored,
             onGrant = { viewModel.openBatteryOptimizationSettings() }
+        )
+        PermissionGrantItem(
+            title = "安装未知来源应用",
+            desc = "允许应用内自动更新时安装新版（需去系统设置开启）",
+            granted = canInstall,
+            onGrant = { UpdateManager.openInstallPermissionSettings(context) }
         )
         // 自启动：小米私有权限，无法自动检测状态，仅引导跳转开启
         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {

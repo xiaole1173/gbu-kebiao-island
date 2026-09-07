@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 应用内更新：暴露缓存目录中的待安装 APK -->
+<paths>
+    <cache-path
+        name="update"
+        path="update/" />
+</paths>

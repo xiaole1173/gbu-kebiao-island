@@ -65,6 +65,7 @@ fun SettingsScreen(viewModel: SettingsViewModel = viewModel()) {
     val semCredits by viewModel.currentSemesterCredits.collectAsState()
     val testHint by viewModel.testReminderHint.collectAsState()
     val checks by viewModel.reminderChecks.collectAsState()
+    val updateState by viewModel.updateState.collectAsState()
 
     // 进入设置页 / 从系统设置返回（onResume）时刷新提醒相关状态
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { viewModel.refreshReminderChecks() }
@@ -463,7 +464,58 @@ fun SettingsScreen(viewModel: SettingsViewModel = viewModel()) {
             Card(modifier = Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("关于", style = MaterialTheme.typography.titleMedium)
-                    AboutRow("版本", "v0.1.0")
+                    val versionName = remember {
+                        runCatching {
+                            context.packageManager.getPackageInfo(context.packageName, 0).versionName
+                        }.getOrNull() ?: ""
+                    }
+                    AboutRow("版本", if (versionName.isBlank()) "" else "v$versionName")
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("检查更新（Gitee 发行版）", style = MaterialTheme.typography.bodyMedium)
+                        OutlinedButton(onClick = { viewModel.checkForUpdate(force = true) }) {
+                            Text("检查", fontSize = 13.sp)
+                        }
+                    }
+                    // 更新状态
+                    when (val u = updateState) {
+                        is UpdateUiState.Checking -> Text(
+                            "正在检查更新…",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.outline
+                        )
+                        is UpdateUiState.UpToDate -> Text(
+                            "已是最新版本",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                        is UpdateUiState.Available -> {
+                            Text(
+                                "发现新版本 ${u.info.versionName}：${u.info.changelog}",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                            Button(
+                                onClick = { viewModel.downloadAndInstall(u.info) },
+                                modifier = Modifier.fillMaxWidth().height(44.dp)
+                            ) { Text("立即更新") }
+                        }
+                        is UpdateUiState.Downloading -> Text(
+                            "正在下载… ${(u.progress * 100).toInt()}%",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.outline
+                        )
+                        is UpdateUiState.Error -> Text(
+                            u.message,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.error
+                        )
+                        is UpdateUiState.Idle -> {}
+                    }
+                    HorizontalDivider()
                     AboutRow("版权", "© 2026 影 / Shadow / xiaole1173")
                     AboutRow("开源协议", "MIT License")
                     Text(

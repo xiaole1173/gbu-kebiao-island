@@ -14,6 +14,7 @@ import com.gbu.classisland.edu.EduApi
 import com.gbu.classisland.edu.SyncRepository
 import com.gbu.classisland.reminder.ReminderScheduler
 import com.gbu.classisland.sync.SyncWorker
+import com.gbu.classisland.update.UpdateManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -34,6 +35,16 @@ sealed class SyncUiState {
     data class Error(val message: String) : SyncUiState()
 }
 
+/** 应用更新状态。 */
+sealed class UpdateUiState {
+    data object Idle : UpdateUiState()
+    data object Checking : UpdateUiState()
+    data object UpToDate : UpdateUiState()
+    data class Available(val info: UpdateManager.UpdateInfo) : UpdateUiState()
+    data class Downloading(val progress: Float) : UpdateUiState()
+    data class Error(val message: String) : UpdateUiState()
+}
+
 class SettingsViewModel(app: Application) : AndroidViewModel(app) {
 
     private val settingsRepo = SettingsRepository(app)
@@ -47,6 +58,49 @@ class SettingsViewModel(app: Application) : AndroidViewModel(app) {
     val hasCredentials = MutableStateFlow(!secureStore.read(KEY_USER).isNullOrBlank())
 
     val syncState = MutableStateFlow<SyncUiState>(SyncUiState.Idle)
+
+    /** 应用更新状态（Gitee 发行版）。 */
+    val updateState = MutableStateFlow<UpdateUiState>(UpdateUiState.Idle)
+
+    /**
+     * 检查更新：自动检查受 6 小时间隔限制（[force]=true 手动检查不受限）。
+     */
+    fun checkForUpdate(force: Boolean = false) {
+        val app = getApplication<Application>()
+        if (updateState.value == UpdateUiState.Checking) return
+        if (!force && !UpdateManager.shouldAutoCheck(app)) return
+        viewModelScope.launch {
+            updateState.value = UpdateUiState.Checking
+            val info = UpdateManager.checkLatest(app)
+            updateState.value = when {
+                info == null -> UpdateUiState.Error("检查更新失败，请稍后重试")
+                info.versionCode > UpdateManager.localVersionCode(app) ->
+                    UpdateUiState.Available(info)
+                else -> UpdateUiState.UpToDate
+            }
+        }
+    }
+
+    /** 下载并安装新版本；未授权"安装未知来源"时引导去设置。 */
+    fun downloadAndInstall(info: UpdateManager.UpdateInfo) {
+        val app = getApplication<Application>()
+        viewModelScope.launch {
+            updateState.value = UpdateUiState.Downloading(0f)
+            runCatching {
+                val file = UpdateManager.download(app, info) { p ->
+                    updateState.value = UpdateUiState.Downloading(p)
+                }
+                if (UpdateManager.install(app, file)) {
+                    // 已交给系统安装器，等用户确认
+                } else {
+                    updateState.value = UpdateUiState.Error("请先允许「安装未知来源应用」")
+                    UpdateManager.openInstallPermissionSettings(app)
+                }
+            }.onFailure { e ->
+                updateState.value = UpdateUiState.Error("下载失败：${e.message}")
+            }
+        }
+    }
 
     /** 本科累计学分统计（跨学期叠加，课程库驱动：学分/性质/类别取自教务课程库）。 */
     // 计算放 Default 线程、去重、常驻：避免主线程被占用导致触摸/滚动输入延迟（卡顿感）
