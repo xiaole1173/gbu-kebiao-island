@@ -22,6 +22,8 @@ output.json
 # Keystore / secrets
 *.keystore
 *.jks
+keystore.properties
+/keystore/
 # Runtime credentials — NEVER commit real school account credentials
 local.credentials.properties
 credentials/
