@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 灵动岛小图标：课表小岛 logo（日历 + 胶囊），贴边版填满画布，避免留白导致显示过小 -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <!-- 日历外框（白） -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M3,4 h18 a2,2 0 0 1 2,2 v13 a2,2 0 0 1 -2,2 h-18 a2,2 0 0 1 -2,-2 v-13 a2,2 0 0 1 2,-2 z" />
+    <!-- 顶部横条（白） -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M2,7 h20 v2.5 h-20 z" />
+    <!-- 挂环（白描边） -->
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="1.6"
+        android:pathData="M7,4 v-1.5 M17,4 v-1.5" />
+    <!-- 日期块（蓝） -->
+    <path
+        android:fillColor="#FF2E7BD6"
+        android:pathData="M6.5,12 h11 v4.5 h-11 z" />
+    <!-- 胶囊（灵动岛，白） -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M4.5,13 h15 a3.5,3.5 0 0 1 0,7 h-15 a3.5,3.5 0 0 1 0,-7 z" />
+</vector>

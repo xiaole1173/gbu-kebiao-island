@@ -142,6 +142,20 @@ class EduApi(
         val list: List<CourseLibraryItem> = emptyList()
     )
 
+    /** 全校课表（任务查询）条目：RWH → 任务名称（rwmc 含班级/分组，如 "…-01班-2组"）。 */
+    @Serializable
+    data class RwxxItem(
+        val rwh: String = "",
+        val rwmc: String = "",
+        val pylx: String? = null
+    )
+
+    @Serializable
+    private data class RwxxListResp(val total: Int = 0, val list: List<RwxxItem> = emptyList())
+
+    @Serializable
+    private data class RwxxResponse(val rwList: RwxxListResp = RwxxListResp())
+
     /** 总课表（整学期全部课程块），同步主数据源。 */
     suspend fun fetchTotalTimetable(xn: String, xq: String): List<TimetableBlock> =
         withContext(Dispatchers.IO) {
@@ -237,6 +251,45 @@ class EduApi(
             }
             all.filter { it.pylx == "1" }
         }.getOrDefault(emptyList())
+    }
+
+    /**
+     * 任务名称（rwmc，含班级/分组信息）按 RWH 的映射。
+     * 来源：全校课表 Xsxktz/queryRwxxcxList（本科 p_chaxunpylx=1），best-effort。
+     */
+    suspend fun fetchTaskInfoMap(xn: String, xq: String): Map<String, String> = withContext(Dispatchers.IO) {
+        runCatching {
+            val all = mutableMapOf<String, String>()
+            var pageNum = 1
+            while (true) {
+                val body = FormBody.Builder()
+                    .add("p_chapylx", "").add("ordertext_0", "")
+                    .add("p_xn", xn).add("p_xq", xq).add("p_xnxq", "$xn-$xq")
+                    .add("p_gjz", "").add("p_xiaoqu", "").add("p_kkyx", "").add("p_rwlx", "")
+                    .add("p_kclb", "").add("p_kcxz", "").add("p_chaxungjz", "").add("p_chaxunxiaoqu", "")
+                    .add("p_chaxunkkyx", "").add("p_chaxunnj", "").add("p_chaxunglyx", "").add("p_chaxunzy", "")
+                    .add("p_chaxunxdm", "").add("p_chaxunpylx", "1").add("mxpylx", "1")
+                    .add("p_zc", "").add("p_xqj", "").add("p_ksjc", "").add("p_jsjc", "").add("p_skjs", "")
+                    .add("p_sfhltsxx", "0")
+                    .add("pageNum", pageNum.toString()).add("pageSize", "200")
+                    .build()
+                val req = Request.Builder()
+                    .url("$BASE/Xsxktz/queryRwxxcxList")
+                    .post(body)
+                    .header("X-Requested-With", "XMLHttpRequest")
+                    .header("Referer", "$BASE/authentication/main")
+                    .build()
+                val text = client.newCall(req).execute().use { it.body?.string() ?: "" }
+                if (text.isBlank()) break
+                val resp = json.decodeFromString<RwxxResponse>(text)
+                resp.rwList.list.forEach { item ->
+                    if (item.rwmc.isNotBlank() && item.pylx == "1") all[item.rwh] = item.rwmc
+                }
+                if (resp.rwList.list.isEmpty() || resp.rwList.list.size < 200) break
+                pageNum++
+            }
+            all
+        }.getOrDefault(emptyMap())
     }
 }
 

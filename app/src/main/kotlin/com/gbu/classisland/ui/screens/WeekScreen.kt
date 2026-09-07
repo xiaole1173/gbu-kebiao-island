@@ -666,6 +666,8 @@ private fun CourseDetailContent(
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         DetailRow("教师", course.teacher.ifBlank { "—" })
         DetailRow("教室", course.location.ifBlank { "—" })
+        // 班级/分组（从任务名称提取：去掉课程名前缀，保留班/组及大班课等标识；没有则不显示）
+        buildGroupLabel(course)?.let { DetailRow("班级/分组", it) }
         if (creditEntry != null) {
             val nature = when {
                 creditEntry.required -> "必修"
@@ -691,6 +693,19 @@ private fun CourseDetailContent(
         }
         DetailRow("来源", if (course.source == "manual") "手动添加" else "教务同步")
     }
+}
+
+/** 从任务名称提取班级/分组展示：去掉课程名前缀，保留 "02班-1组"、"大班课B班" 等；多个任务并排（" · " 分隔）。 */
+private fun buildGroupLabel(course: Course): String? {
+    val segs = course.taskName.split("·").map { it.trim() }.filter { it.isNotBlank() }
+    if (segs.isEmpty()) return null
+    val parts = segs.mapNotNull { seg ->
+        val stripped = if (course.name.isNotBlank() && seg.startsWith(course.name)) {
+            seg.removePrefix(course.name).trimStart('-', '·', ' ')
+        } else seg
+        stripped.takeIf { it.isNotBlank() }
+    }.distinct()
+    return parts.joinToString(" · ").takeIf { it.isNotBlank() }
 }
 
 @Composable

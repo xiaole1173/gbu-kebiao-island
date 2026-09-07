@@ -45,5 +45,7 @@ data class Course(
     /** 来源：manual 手动 / edu 教务同步 / excel 导入 */
     val source: String = "manual",
     /** 教务任物号 RWH（如 2026-2027-1-MATH103-001B），用于同步变更对比；手动课程可为空 */
-    val externalId: String = ""
+    val externalId: String = "",
+    /** 任务名称（全校课表接口 rwmc，含班级/分组信息，如 "计算机科学导论（上）-01班-2组"） */
+    val taskName: String = ""
 )

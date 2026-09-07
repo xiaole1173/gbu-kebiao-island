@@ -12,11 +12,10 @@ import android.os.Build
 /** 通知渠道。 */
 object NotificationChannels {
 
-    // 上课提醒：带闹钟铃声 + 震动（提前 x 分钟 = 通知 + 声音 + 震动）
+    // 上课提醒：高优先级 + 普通通知铃声 + 震动（提前 x 分钟 = 通知 + 声音 + 震动，非闹钟声）
     const val CHANNEL_REMINDER = "course_reminder_alarm"
     /** 灵动岛 / 上课进度（静默：声音震动归提醒频道） */
     const val CHANNEL_LIVE = "live_updates"
-    const val CHANNEL_NOW = "course_now"
     const val CHANNEL_SYNC = "course_sync"
 
     /** 旧的提醒频道 id（无闹钟铃声的版本），ensure 时删除避免残留。 */
@@ -32,17 +31,17 @@ object NotificationChannels {
         nm.deleteNotificationChannel(CHANNEL_REMINDER_LEGACY)
         nm.deleteNotificationChannel(CHANNEL_REMINDER_FSI_LEGACY)
 
-        // 上课提醒：高优先级 + 闹钟铃声 + 震动（提前 x 分钟 → 通知 + 声音 + 震动）
+        // 上课提醒：高优先级 + 普通通知铃声 + 震动（提前 x 分钟 → 通知 + 声音 + 震动）
         val reminder = NotificationChannel(
             CHANNEL_REMINDER,
             "上课提醒",
             NotificationManager.IMPORTANCE_HIGH
         ).apply {
-            description = "课程开始前提前提醒（声音 + 震动）"
+            description = "课程开始前提前提醒（通知 + 声音 + 震动）"
             setSound(
-                RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM),
+                RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION),
                 AudioAttributes.Builder()
-                    .setUsage(AudioAttributes.USAGE_ALARM)
+                    .setUsage(AudioAttributes.USAGE_NOTIFICATION)
                     .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
                     .build()
             )
@@ -60,11 +59,6 @@ object NotificationChannels {
                     "灵动岛 · 上课进度",
                     NotificationManager.IMPORTANCE_DEFAULT
                 ).apply { description = "上课前后的灵动岛倒计时与进度（静默）" },
-                NotificationChannel(
-                    CHANNEL_NOW,
-                    "当前/下一节课",
-                    NotificationManager.IMPORTANCE_LOW
-                ).apply { description = "持续显示当前或即将开始的课" },
                 NotificationChannel(
                     CHANNEL_SYNC,
                     "课表同步",

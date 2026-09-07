@@ -10,13 +10,9 @@ import androidx.core.app.NotificationCompat
 import com.gbu.classisland.MainActivity
 import com.gbu.classisland.R
 import com.gbu.classisland.data.Course
-import com.gbu.classisland.util.UpcomingClass
-import java.time.format.DateTimeFormatter
 
 /** 构建并发送通知。 */
 object ClassNotifier {
-
-    private val timeFmt = DateTimeFormatter.ofPattern("HH:mm")
 
     /** 上课提醒通知 ID（供移除时取消）。 */
     fun reminderNotificationId(course: Course): Int =
@@ -38,35 +34,6 @@ object ClassNotifier {
             setStyle(NotificationCompat.BigTextStyle().bigText(content))
             setAutoCancel(true)
             setPriority(NotificationCompat.PRIORITY_HIGH)
-        }
-    }
-
-    /**
-     * 持续显示"当前/下一节课"（低优先级常驻通知）。
-     * 该通知为标准系统通知，可被 HyperBridge 等超级岛工具捕获上岛。
-     */
-    fun showNowClass(context: Context, upcoming: UpcomingClass?) {
-        val nm = context.getSystemService(NotificationManager::class.java)
-        if (upcoming == null) {
-            nm.cancel(NOTIF_ID_NOW)
-            return
-        }
-        val c = upcoming.course
-        val whenText = "${upcoming.start.format(timeFmt)} - ${upcoming.end.format(timeFmt)}"
-        val title = if (upcoming.isOngoing) "正在上课：${c.name}" else "下一节：${c.name}"
-        val text = buildString {
-            append(if (upcoming.isOngoing) "上到 " else "开始于 ")
-            append(whenText)
-            if (c.location.isNotBlank()) append(" · ").append(c.location)
-            if (c.teacher.isNotBlank()) append(" · ").append(c.teacher)
-        }
-        notify(context, NotificationChannels.CHANNEL_NOW, NOTIF_ID_NOW) {
-            setSmallIcon(R.drawable.ic_stat_class)
-            setContentTitle(title)
-            setContentText(text)
-            setStyle(NotificationCompat.BigTextStyle().bigText(text))
-            setOngoing(true)
-            setPriority(NotificationCompat.PRIORITY_LOW)
         }
     }
 
@@ -127,7 +94,5 @@ object ClassNotifier {
         )
 
     private const val NOTIF_ID_REMINDER_BASE = 1000
-    private const val NOTIF_ID_NOW = 2000
     private const val NOTIF_ID_SYNC = 3000
-    private const val NOTIF_ID_TEST = 4000
 }

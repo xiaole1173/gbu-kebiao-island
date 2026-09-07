@@ -342,6 +342,11 @@ fun SettingsScreen(viewModel: SettingsViewModel = viewModel()) {
                         OutlinedButton(onClick = { requestOrSendTestReminder() }) {
                             Text("测试提醒")
                         }
+                        OutlinedButton(onClick = {
+                            com.gbu.classisland.notification.LiveUpdateNotifier.showTest(context)
+                        }) {
+                            Text("测试灵动岛")
+                        }
                     }
                     testHint?.let {
                         Text(
@@ -505,7 +510,7 @@ fun SettingsScreen(viewModel: SettingsViewModel = viewModel()) {
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text("检查更新（Gitee 发行版）", style = MaterialTheme.typography.bodyMedium)
+                        Text("检查更新（发行版）", style = MaterialTheme.typography.bodyMedium)
                         OutlinedButton(onClick = { viewModel.checkForUpdate(force = true) }) {
                             Text("检查", fontSize = 13.sp)
                         }

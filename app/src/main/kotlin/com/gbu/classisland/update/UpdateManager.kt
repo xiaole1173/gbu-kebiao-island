@@ -29,6 +29,7 @@ object UpdateManager {
     const val CHECK_INTERVAL_MS = 6L * 60 * 60 * 1000
     private const val PREFS = "update"
     private const val KEY_LAST_CHECK = "last_check_ms"
+    private const val KEY_DOWNLOADED_CODE = "downloaded_code"
     private const val APK_FILE_NAME = "app-release.apk"
 
     private val json = Json { ignoreUnknownKeys = true }
@@ -100,7 +101,8 @@ object UpdateManager {
         }.getOrNull()
     }
 
-    /** 下载 APK 到缓存目录，回调下载进度 [onProgress]（0..1）。 */
+    /** 下载 APK 到缓存目录，回调下载进度 [onProgress]（0..1）。
+     *  成功后记录对应 versionCode，下次可复用本地文件避免重复下载。 */
     suspend fun download(
         context: Context,
         info: UpdateInfo,
@@ -127,13 +129,26 @@ object UpdateManager {
                 }
             }
         }
+        // 记录已下载版本，供后续复用
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+            .putInt(KEY_DOWNLOADED_CODE, info.versionCode).apply()
         file
     }
 
+    /** 已下载且匹配指定版本的本地 APK（未安装前可复用，避免重复下载）；无则 null。 */
+    fun downloadedApk(context: Context, versionCode: Int): File? {
+        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        if (prefs.getInt(KEY_DOWNLOADED_CODE, 0) != versionCode) return null
+        val f = File(context.cacheDir, "update/$APK_FILE_NAME")
+        return f.takeIf { it.exists() && it.length() > 0 }
+    }
+
+    /** 是否已授予"安装未知来源应用"。 */
+    fun canInstall(context: Context): Boolean = context.packageManager.canRequestPackageInstalls()
+
     /** 拉起系统安装器安装 APK。返回 false 表示未授予"安装未知来源应用"。 */
     fun install(context: Context, apk: File): Boolean {
-        val pm = context.packageManager
-        if (!pm.canRequestPackageInstalls()) return false
+        if (!canInstall(context)) return false
         val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", apk)
         val intent = Intent(Intent.ACTION_VIEW)
             .setDataAndType(uri, "application/vnd.android.package-archive")

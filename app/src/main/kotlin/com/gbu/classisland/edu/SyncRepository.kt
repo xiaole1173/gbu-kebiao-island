@@ -80,9 +80,20 @@ class SyncRepository(
             if (blocks.isEmpty()) continue // 该学期无数据 → 丢弃（未选课/未来学期）
 
             // 去重：教务可能返回重复块（同课/同天/同节次/同周次），避免周课表重叠
-            val incoming = TimetableParser.parse(blocks, sem.XN, sem.XQ)
+            val parsed = TimetableParser.parse(blocks, sem.XN, sem.XQ)
                 .distinctBy { listOf(it.externalId, it.dayOfWeek, it.startSection, it.endSection, it.weeks) }
-            if (incoming.isEmpty()) continue
+            if (parsed.isEmpty()) continue
+
+            // 任务名称（班级/分组）：按 RWH 从全校课表补上，best-effort（失败不影响同步）
+            val taskMap = api.fetchTaskInfoMap(sem.XN, sem.XQ)
+            val stamped = if (taskMap.isEmpty()) parsed
+            else parsed.map { c ->
+                if (c.taskName.isBlank()) c.copy(taskName = taskMap[c.externalId] ?: "") else c
+            }
+
+            // 合并同一课程代码、同时段（同一天+节次重叠）的块：保留大班课/小班等任务数据，
+            // 详情并排展示（班级/分组、教师、教室），避免周课表重叠块
+            val incoming = mergeSameCourseOverlaps(stamped)
 
             val existing = courseDao.getBySemester(semesterId)
 
@@ -134,6 +145,63 @@ class SyncRepository(
             removed = removedAll,
             modified = modifiedAll,
             syncedSemesters = syncedSemesters
+        )
+    }
+
+    /**
+     * 合并同一课程代码、同时段（同一天且节次重叠）的块为一块。
+     * 同一门课可能拆成多个任务（如大班理论课 + 小班实验课），重叠时段合并后：
+     * 周课表不出现重叠块、提醒不重复；详情信息并排展示（班级/分组、教师、教室）。
+     */
+    private fun mergeSameCourseOverlaps(courses: List<Course>): List<Course> {
+        val result = mutableListOf<Course>()
+        val byCode = courses.groupBy {
+            com.gbu.classisland.data.credits.CourseCatalog.extractCode(it.externalId) ?: it.externalId
+        }
+        for ((_, group) in byCode) {
+            val used = BooleanArray(group.size)
+            for (i in group.indices) {
+                if (used[i]) continue
+                val merged = mutableListOf<Course>()
+                for (j in group.indices) {
+                    if (used[j]) continue
+                    if (merged.isEmpty() || timeOverlaps(merged.first(), group[j])) {
+                        merged += group[j]
+                        used[j] = true
+                    }
+                }
+                result += if (merged.size == 1) merged[0] else mergedBlock(merged)
+            }
+        }
+        return result
+    }
+
+    private fun timeOverlaps(a: Course, b: Course): Boolean =
+        a.dayOfWeek == b.dayOfWeek &&
+            a.startSection <= b.endSection && b.startSection <= a.endSection
+
+    private fun mergedBlock(blocks: List<Course>): Course {
+        val first = blocks.first()
+        fun distinct(f: (Course) -> String): List<String> =
+            blocks.map(f).filter { it.isNotBlank() }.distinct()
+        val weeks = blocks.flatMap { it.weeks.split(",") }
+            .map { it.trim() }.filter { it.isNotBlank() }.distinct().sorted().joinToString(",")
+        val ws = weeks.split(",").mapNotNull { it.toIntOrNull() }
+        return first.copy(
+            startSection = blocks.minOf { it.startSection },
+            endSection = blocks.maxOf { it.endSection },
+            weeks = weeks,
+            startWeek = ws.minOrNull() ?: first.startWeek,
+            endWeek = ws.maxOrNull() ?: first.endWeek,
+            weekParity = when {
+                ws.isEmpty() || ws.size <= 1 -> 0
+                ws.all { it % 2 == 1 } -> 1
+                ws.all { it % 2 == 0 } -> 2
+                else -> 0
+            },
+            taskName = distinct { it.taskName }.joinToString(" · "),
+            teacher = distinct { it.teacher }.joinToString(" / "),
+            location = distinct { it.location }.joinToString(" / ")
         )
     }
 }

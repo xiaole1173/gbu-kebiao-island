@@ -109,12 +109,8 @@ object ReminderScheduler {
         val (start, end) = TimetableEngine.sessionTimes(course, trigger.toLocalDate(), sections)
             ?: return
         LiveUpdateNotifier.scheduleForClass(
-            context, course.name, course.location, start, end, now, leadMinutes = remindMinutes
+            context, course.name, course.location, course.teacher, start, end, now, leadMinutes = remindMinutes
         )
-
-        // 顺带刷新"当前/下一节课"常驻通知
-        val upcoming = TimetableEngine.upcoming(courses, now, sections, termStart)
-        ClassNotifier.showNowClass(context, upcoming)
     }
 
     private fun remindBroadcastPendingIntent(
@@ -137,12 +133,18 @@ object ReminderScheduler {
     class ReminderReceiver : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
             when (intent.action) {
+                LiveUpdateNotifier.ACTION_CLOSE -> {
+                    // 「关闭」：取消灵动岛通知并终止 tick 链
+                    LiveUpdateNotifier.cancel(context)
+                    return
+                }
                 LiveUpdateNotifier.ACTION_TICK -> {
                     // 灵动岛进度 tick
                     LiveUpdateNotifier.onTick(
                         context,
                         intent.getStringExtra(LiveUpdateNotifier.EXTRA_NAME) ?: return,
                         intent.getStringExtra(LiveUpdateNotifier.EXTRA_ROOM).orEmpty(),
+                        intent.getStringExtra(LiveUpdateNotifier.EXTRA_TEACHER).orEmpty(),
                         intent.getLongExtra(LiveUpdateNotifier.EXTRA_START, 0L),
                         intent.getLongExtra(LiveUpdateNotifier.EXTRA_END, 0L),
                         intent.getLongExtra(LiveUpdateNotifier.EXTRA_ANCHOR, 0L),
