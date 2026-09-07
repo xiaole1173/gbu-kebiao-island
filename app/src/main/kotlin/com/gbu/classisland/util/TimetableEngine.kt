@@ -42,8 +42,9 @@ object TimetableEngine {
         }
     }
 
-    /** 课程在某天的起止时间（按节次时间表）。找不到返回 null。 */
-    fun sessionTimes(course: Course, date: LocalDate, sections: List<SectionTime>): Pair<LocalDateTime, LocalDateTime>? {
+    /** 课程在某天的起止时间（按当天作息表：周一三五 75 分钟 / 周二四 115 分钟）。找不到返回 null。 */
+    fun sessionTimes(course: Course, date: LocalDate): Pair<LocalDateTime, LocalDateTime>? {
+        val sections = com.gbu.classisland.model.DefaultSections.forDay(date.dayOfWeek.value)
         val start = sections.find { it.section == course.startSection } ?: return null
         val end = sections.find { it.section == course.endSection } ?: return null
         return LocalDateTime.of(date, LocalTime.parse(start.start)) to
@@ -57,7 +58,6 @@ object TimetableEngine {
     fun upcoming(
         courses: List<Course>,
         now: LocalDateTime,
-        sections: List<SectionTime>,
         termStart: LocalDate
     ): UpcomingClass? {
         val week = currentWeek(termStart, now.toLocalDate())
@@ -65,7 +65,7 @@ object TimetableEngine {
 
         fun forDate(date: LocalDate): List<UpcomingClass> =
             coursesOn(courses, date, week).mapNotNull { c ->
-                sessionTimes(c, date, sections)?.let { (s, e) -> UpcomingClass(c, date, s, e) }
+                sessionTimes(c, date)?.let { (s, e) -> UpcomingClass(c, date, s, e) }
             }.sortedBy { it.start }
 
         val todayList = forDate(now.toLocalDate())

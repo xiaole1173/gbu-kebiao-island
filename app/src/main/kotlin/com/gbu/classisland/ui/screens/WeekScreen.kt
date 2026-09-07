@@ -38,6 +38,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -81,6 +82,10 @@ fun WeekScreen(viewModel: WeekViewModel = viewModel()) {
     val libraryByCode by viewModel.libraryByCode.collectAsState()
     var showAdd by remember { mutableStateOf(false) }
     var selectedCourse by remember { mutableStateOf<Course?>(null) }
+    // 行轴时段：默认按今天星期（周一三五 75 分钟 / 周二四 115 分钟），可手动切换
+    var isTueThuMode by rememberSaveable {
+        mutableStateOf(today.dayOfWeek.value == 2 || today.dayOfWeek.value == 4)
+    }
 
     Column(modifier = Modifier.fillMaxSize()) {
         WeekHeader(
@@ -91,7 +96,9 @@ fun WeekScreen(viewModel: WeekViewModel = viewModel()) {
             selectedSemester = effectiveSemester,
             onSelectSemester = viewModel::selectSemester,
             onSelectWeek = viewModel::selectWeek,
-            onAddCourse = { showAdd = true }
+            onAddCourse = { showAdd = true },
+            axisLabel = if (isTueThuMode) "周二四时段" else "周一三五时段",
+            onToggleAxis = { isTueThuMode = !isTueThuMode }
         )
         // 周次切换动画：按方向滑动翻页（下一周从右滑入，上一周从左滑入）
         AnimatedContent(
@@ -118,9 +125,9 @@ fun WeekScreen(viewModel: WeekViewModel = viewModel()) {
             TimetableGrid(
                 courses = courses,
                 week = week,
-                sections = sections,
                 today = today,
                 termStart = if (isCurrentSemester) termStart else null,
+                isTueThuMode = isTueThuMode,
                 onCourseClick = { selectedCourse = it },
                 modifier = Modifier.fillMaxSize()
             )
@@ -132,7 +139,7 @@ fun WeekScreen(viewModel: WeekViewModel = viewModel()) {
         AlertDialog(
             onDismissRequest = { selectedCourse = null },
             title = { Text(c.name, style = MaterialTheme.typography.titleMedium) },
-            text = { CourseDetailContent(c, sections, libraryByCode) },
+            text = { CourseDetailContent(c, libraryByCode) },
             confirmButton = {
                 Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                     if (c.source == "manual") {
@@ -167,7 +174,9 @@ private fun WeekHeader(
     selectedSemester: String,
     onSelectSemester: (String) -> Unit,
     onSelectWeek: (Int) -> Unit,
-    onAddCourse: () -> Unit
+    onAddCourse: () -> Unit,
+    axisLabel: String,
+    onToggleAxis: () -> Unit
 ) {
     Column(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
@@ -194,10 +203,29 @@ private fun WeekHeader(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text(
-                text = if (isCurrentSemester && currentWeek <= 0) "未开学 · 第 $selectedWeek 周" else "第 $selectedWeek 周",
-                style = MaterialTheme.typography.titleMedium
-            )
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                Text(
+                    text = if (isCurrentSemester && currentWeek <= 0) "未开学 · 第 $selectedWeek 周" else "第 $selectedWeek 周",
+                    style = MaterialTheme.typography.titleMedium
+                )
+                // 行轴时段切换：点击在「周一三五时段 / 周二四时段」间切换
+                androidx.compose.material3.OutlinedButton(
+                    onClick = onToggleAxis,
+                    contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 10.dp, vertical = 0.dp),
+                    modifier = Modifier.height(32.dp)
+                ) {
+                    androidx.compose.material3.Icon(
+                        painter = painterResource(com.gbu.classisland.R.drawable.lucide_clock),
+                        contentDescription = null,
+                        modifier = Modifier.size(13.dp)
+                    )
+                    Spacer(Modifier.width(4.dp))
+                    Text(axisLabel, fontSize = 12.sp)
+                }
+            }
             Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                 TextButtonCompat("上一周") { onSelectWeek((selectedWeek - 1).coerceAtLeast(1)) }
                 TextButtonCompat("下一周") { onSelectWeek(selectedWeek + 1) }
@@ -345,9 +373,9 @@ private fun computeLayout(
 fun TimetableGrid(
     courses: List<Course>,
     week: Int,
-    sections: List<SectionTime>,
     today: LocalDate,
     termStart: LocalDate?,
+    isTueThuMode: Boolean,
     onCourseClick: (Course) -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -361,9 +389,12 @@ fun TimetableGrid(
     val currentLayout by rememberUpdatedState(layout)
     // 主题感知的文字色（深色模式下 Canvas 文字/线必须跟随 onSurface，否则黑字看不见）
     val onSurface = MaterialTheme.colorScheme.onSurface
+    // 行轴时段表：周一三五 75 分钟 / 周二四 115 分钟
+    val axisSections = if (isTueThuMode) com.gbu.classisland.model.DefaultSections.tueThu
+    else com.gbu.classisland.model.DefaultSections.list
     // 预计算全部文本布局：重绘/切页动画时直接画缓存，不再逐格 re-measure（消除主线程文本测量卡顿）
-    val texts = remember(layout, sections, week, termStart, today, onSurface) {
-        buildGridTexts(textMeasurer, layout, sections, week, termStart, today, onSurface)
+    val texts = remember(layout, axisSections, week, termStart, today, onSurface) {
+        buildGridTexts(textMeasurer, layout, axisSections, week, termStart, today, onSurface)
     }
 
     Canvas(
@@ -396,15 +427,29 @@ fun TimetableGrid(
     ) {
         if (layout.colW <= 0f) return@Canvas
         drawColumnHeader(texts, layout, week, termStart, today)
-        drawRowHeader(texts, layout, sections)
+        drawRowHeader(texts, layout)
 
-        // 课程块
+        // 非当前时段的天：整列极浅灰底（轻微提示，不影响可读性）
+        layout.dayRange.forEach { day ->
+            val gray = if (isTueThuMode) day in setOf(1, 3, 5) else day in setOf(2, 4)
+            if (gray) {
+                val cx = layout.rowHeaderW + (day - layout.dayRange.first) * layout.colW
+                drawRect(
+                    color = Color(0x0A9E9E9E),
+                    topLeft = Offset(cx, layout.headerH),
+                    size = Size(layout.colW, size.height - layout.headerH)
+                )
+            }
+        }
+
+        // 课程块（非当前时段的天整列标灰）
         clipRect(top = layout.headerH, left = layout.rowHeaderW) {
             layout.weekCourses.filter { it.dayOfWeek in layout.dayRange }.forEach { c ->
+                val gray = if (isTueThuMode) c.dayOfWeek in setOf(1, 3, 5) else c.dayOfWeek in setOf(2, 4)
                 val x = layout.rowHeaderW + (c.dayOfWeek - layout.dayRange.first) * layout.colW
                 val y = layout.headerH + (c.startSection - 1) * layout.rowH
                 val h = (c.endSection - c.startSection + 1) * layout.rowH
-                drawCourseBlock(texts, c, x, y, layout.colW - 2f, h - 2f)
+                drawCourseBlock(texts, c, x, y, layout.colW - 2f, h - 2f, gray)
             }
         }
 
@@ -501,7 +546,10 @@ private fun buildGridTexts(
             constraints = androidx.compose.ui.unit.Constraints(maxWidth = textMaxW, maxHeight = Int.MAX_VALUE)
         )
     }
-    return GridTexts(headerLabels, headerDates, holidayDays, rowNumbers, rowTimes, blockTitles, blockLocs)
+    return GridTexts(
+        headerLabels, headerDates, holidayDays, rowNumbers, rowTimes,
+        blockTitles, blockLocs
+    )
 }
 
 /** 列头：星期 + 日期，今天所在列高亮。 */
@@ -545,8 +593,7 @@ private fun DrawScope.drawColumnHeader(
 /** 行头：节次号在上、起止时间在下（居中排版，避免贴边被遮挡）。 */
 private fun DrawScope.drawRowHeader(
     texts: GridTexts,
-    layout: TimetableLayout,
-    sections: List<SectionTime>
+    layout: TimetableLayout
 ) {
     (1..layout.maxSection).forEach { s ->
         val cy = layout.headerH + (s - 1) * layout.rowH
@@ -594,9 +641,10 @@ private fun DrawScope.drawCourseBlock(
     x: Float,
     y: Float,
     w: Float,
-    h: Float
+    h: Float,
+    gray: Boolean = false
 ) {
-    val color = courseColor(course.externalId)
+    val color = if (gray) courseColor(course.externalId).copy(alpha = 0.5f) else courseColor(course.externalId)
     // 色块内缩留出边距，让网格格子可见
     val inset = 3f
     val bw = (w - inset * 2).coerceAtLeast(8f)
@@ -613,7 +661,7 @@ private fun DrawScope.drawCourseBlock(
         size = Size(bw, bh),
         cornerRadius = androidx.compose.ui.geometry.CornerRadius(5f)
     )
-    // 文字（课程名 2 行截断 + 地点小字），布局已预计算缓存
+    // 文字（课程名 2 行截断 + 地点小字），布局已预计算缓存；标灰块保持白色文字保证可读
     val key = BlockKey(course.externalId, course.dayOfWeek, course.startSection)
     val title = texts.blockTitles[key] ?: return
     drawText(textLayoutResult = title, topLeft = Offset(x + inset + 3f, y + inset + 3f))
@@ -649,11 +697,12 @@ private fun DrawScope.px(dp: Float): Float = dp * density
 @Composable
 private fun CourseDetailContent(
     course: Course,
-    sections: List<SectionTime>,
     libraryByCode: Map<String, com.gbu.classisland.data.LibraryCourse>
 ) {
-    val startSec = sections.find { it.section == course.startSection }
-    val endSec = sections.find { it.section == course.endSection }
+    // 按课程星期取作息表（周一三五 75 分钟 / 周二四 115 分钟），保证详情时间准确
+    val daySections = com.gbu.classisland.model.DefaultSections.forDay(course.dayOfWeek)
+    val startSec = daySections.find { it.section == course.startSection }
+    val endSec = daySections.find { it.section == course.endSection }
     val isPe = course.name.contains("体育") || course.externalId.contains("PEC")
     val peHint = if (isPe) {
         com.gbu.classisland.data.credits.CourseCatalog.peProjectHint(course.teacher)
@@ -740,9 +789,9 @@ private fun WeekScreenPreview() {
                 Course(name = "大学英语1", location = "B304", dayOfWeek = 2, startSection = 6, endSection = 7, weeks = (1..16).joinToString(","), externalId = "2026-2027-1-ENG101-001")
             ),
             week = 2,
-            sections = com.gbu.classisland.model.DefaultSections.list,
             today = LocalDate.now(),
             termStart = LocalDate.now().minusDays(7),
+            isTueThuMode = false,
             onCourseClick = {}
         )
     }

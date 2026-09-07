@@ -71,7 +71,7 @@ class TodayWidgetProvider : AppWidgetProvider() {
             val week = runCatching { LocalDate.parse(settings.termStartDate) }.getOrNull()
                 ?.let { TimetableEngine.currentWeek(it, today) } ?: 0
             val next = if (week > 0 && !isHoliday)
-                TimetableEngine.upcoming(courses, LocalDateTime.now(), settings.sections, today)
+                TimetableEngine.upcoming(courses, LocalDateTime.now(), today)
             else null
 
             ids.forEach { id ->

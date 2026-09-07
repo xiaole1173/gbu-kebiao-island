@@ -53,9 +53,8 @@ object ReminderScheduler {
         val courses = db.courseDao().getBySemester(s.currentSemesterId)
         if (courses.isEmpty()) return
         if (s.termStartDate.isBlank()) return // 未设置开学日期，跳过重排（避免空串解析异常）
-        val sections = s.sections
         val termStart = LocalDate.parse(s.termStartDate)
-        scheduleNext(context, courses, sections, termStart, s.remindBeforeMinutes)
+        scheduleNext(context, courses, termStart, s.remindBeforeMinutes)
     }
 
     /** 精确闹钟是否可用（Android 12+ 需 SCHEDULE_EXACT_ALARM 授权）。 */
@@ -68,7 +67,6 @@ object ReminderScheduler {
     fun scheduleNext(
         context: Context,
         courses: List<Course>,
-        sections: List<SectionTime>,
         termStart: LocalDate,
         remindMinutes: Int
     ) {
@@ -84,7 +82,7 @@ object ReminderScheduler {
             if (com.gbu.classisland.data.calendar.AcademicCalendar.isHoliday(date)) continue
             val dayCourses = TimetableEngine.coursesOn(courses, date, week)
             for (c in dayCourses) {
-                val (start, _) = TimetableEngine.sessionTimes(c, date, sections) ?: continue
+                val (start, _) = TimetableEngine.sessionTimes(c, date) ?: continue
                 val remindAt = start.minusMinutes(remindMinutes.toLong())
                 if (remindAt.isAfter(now)) {
                     if (nearest == null || remindAt.isBefore(nearest!!.first)) {
@@ -106,7 +104,7 @@ object ReminderScheduler {
         }
 
         // 灵动岛：为最近一节课安排候课倒计时 + 上课进度
-        val (start, end) = TimetableEngine.sessionTimes(course, trigger.toLocalDate(), sections)
+        val (start, end) = TimetableEngine.sessionTimes(course, trigger.toLocalDate())
             ?: return
         LiveUpdateNotifier.scheduleForClass(
             context, course.name, course.location, course.teacher, start, end, now, leadMinutes = remindMinutes

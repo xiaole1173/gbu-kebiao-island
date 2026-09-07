@@ -413,7 +413,7 @@ class SettingsViewModel(app: Application) : AndroidViewModel(app) {
             if (s.currentSemesterId.isBlank()) return@launch
             val courses = db.courseDao().getBySemester(s.currentSemesterId)
             val termStart = java.time.LocalDate.parse(s.termStartDate)
-            val content = com.gbu.classisland.data.export.IcalExporter.buildIcs(courses, termStart, s.sections)
+            val content = com.gbu.classisland.data.export.IcalExporter.buildIcs(courses, termStart)
             getApplication<Application>().contentResolver.openOutputStream(uri)?.use {
                 it.write(content.toByteArray(Charsets.UTF_8))
             }

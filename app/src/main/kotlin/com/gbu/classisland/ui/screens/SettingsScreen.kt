@@ -443,18 +443,41 @@ fun SettingsScreen(viewModel: SettingsViewModel = viewModel()) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Text("节次时间表", style = MaterialTheme.typography.titleMedium)
                     Text(
-                        "默认按学校常见作息预置，后续可在此编辑",
+                        "每节 35 分钟：周一三五 2 节/大节（75 分钟），周二四 3 节/大节（115 分钟）",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.outline
                     )
+                    Text("周一三五", fontSize = 13.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold)
                     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                        DefaultSections.list.forEach { s ->
+                        DefaultSections.list.filter { it.section % 2 == 1 }.forEach { s ->
+                            val end = DefaultSections.list.find { it.section == s.section + 1 }
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.SpaceBetween
                             ) {
-                                Text("第 ${s.section} 节", fontSize = 13.sp)
-                                Text("${s.start} - ${s.end}", fontSize = 13.sp, color = MaterialTheme.colorScheme.outline)
+                                Text("第 ${s.section}-${s.section + 1} 节", fontSize = 13.sp)
+                                Text(
+                                    "${s.start} - ${end?.end ?: ""}",
+                                    fontSize = 13.sp,
+                                    color = MaterialTheme.colorScheme.outline
+                                )
+                            }
+                        }
+                    }
+                    Text("周二四", fontSize = 13.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold)
+                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        DefaultSections.tueThu.filter { it.section in setOf(1, 4, 7, 10, 13, 16) }.forEach { s ->
+                            val end = DefaultSections.tueThu.find { it.section == s.section + 2 }
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Text("第 ${s.section}-${s.section + 2} 节", fontSize = 13.sp)
+                                Text(
+                                    "${s.start} - ${end?.end ?: ""}",
+                                    fontSize = 13.sp,
+                                    color = MaterialTheme.colorScheme.outline
+                                )
                             }
                         }
                     }

@@ -21,7 +21,6 @@ object IcalExporter {
     fun buildIcs(
         courses: List<Course>,
         termStart: LocalDate,
-        sections: List<SectionTime>,
         appName: String = "课表小岛"
     ): String {
         val sb = StringBuilder()
@@ -33,6 +32,7 @@ object IcalExporter {
         val now = LocalDateTime.now().format(fmt)
 
         for (c in courses) {
+            val sections = com.gbu.classisland.model.DefaultSections.forDay(c.dayOfWeek)
             val startTime = sections.find { it.section == c.startSection } ?: continue
             val endTime = sections.find { it.section == c.endSection } ?: continue
             val weeks = TimetableEngine.parseWeeks(c.weeks)

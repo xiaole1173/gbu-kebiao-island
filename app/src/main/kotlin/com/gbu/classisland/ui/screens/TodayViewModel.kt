@@ -67,12 +67,12 @@ class TodayViewModel(app: Application) : AndroidViewModel(app) {
             if (com.gbu.classisland.data.calendar.AcademicCalendar.isHoliday(d)) {
                 return@combine emptyList()
             }
-            val sections = s?.sections ?: return@combine emptyList()
-            val week = runCatching { LocalDate.parse(s.termStartDate ?: "") }.getOrNull()
+            val st = s ?: return@combine emptyList()
+            val week = runCatching { LocalDate.parse(st.termStartDate ?: "") }.getOrNull()
                 ?.let { TimetableEngine.currentWeek(it, d) } ?: return@combine emptyList()
             if (week <= 0) return@combine emptyList()
             TimetableEngine.coursesOn(cs, d, week).mapNotNull { c ->
-                TimetableEngine.sessionTimes(c, d, sections)
+                TimetableEngine.sessionTimes(c, d)
                     ?.let { (start, end) -> UpcomingClass(c, d, start, end) }
             }.sortedBy { it.start }
         }
@@ -91,13 +91,13 @@ class TodayViewModel(app: Application) : AndroidViewModel(app) {
             if (com.gbu.classisland.data.calendar.AcademicCalendar.isHoliday(d)) {
                 return@combine null
             }
-            val sections = s?.sections ?: return@combine null
-            val termStart = runCatching { LocalDate.parse(s.termStartDate ?: "") }.getOrNull()
+            val st = s ?: return@combine null
+            val termStart = runCatching { LocalDate.parse(st.termStartDate ?: "") }.getOrNull()
                 ?: return@combine null
             val week = TimetableEngine.currentWeek(termStart, d)
             if (week <= 0) return@combine null
             val list = TimetableEngine.coursesOn(cs, d, week).mapNotNull { c ->
-                TimetableEngine.sessionTimes(c, d, sections)
+                TimetableEngine.sessionTimes(c, d)
                     ?.let { (start, end) -> UpcomingClass(c, d, start, end) }
             }.sortedBy { it.start }
             if (d == LocalDate.now()) {
