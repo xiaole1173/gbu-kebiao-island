@@ -2,7 +2,6 @@
 // Copyright (C) 2026 影 / Shadow / xiaole1173
 package com.gbu.classisland.notification
 
-import android.app.Notification
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
@@ -11,49 +10,33 @@ import androidx.core.app.NotificationCompat
 import com.gbu.classisland.MainActivity
 import com.gbu.classisland.R
 import com.gbu.classisland.data.Course
-import com.gbu.classisland.reminder.ReminderActivity
 import com.gbu.classisland.util.UpcomingClass
-import kotlinx.serialization.json.Json
 import java.time.format.DateTimeFormatter
 
 /** 构建并发送通知。 */
 object ClassNotifier {
 
     private val timeFmt = DateTimeFormatter.ofPattern("HH:mm")
-    private val json = Json { ignoreUnknownKeys = true }
 
-    /** 上课提醒通知 ID（供全屏提醒页关闭时取消）。 */
+    /** 上课提醒通知 ID（供移除时取消）。 */
     fun reminderNotificationId(course: Course): Int =
         NOTIF_ID_REMINDER_BASE + course.id.hashCode() % 100
 
     /**
-     * 闹钟式上课提醒（高优先级 + 闹钟铃声 + 全屏）：
-     * - fullScreenIntent 在锁屏/黑屏/使用中全屏拉起 ReminderActivity
-     * - setOngoing：通知持续显示，必须手动关闭
+     * 提前上课提醒（高优先级 + 闹钟铃声 + 震动，来自 CHANNEL_REMINDER）：
+     * 普通通知，点击进入 App，可自动取消。声音/震动由频道保证。
      */
     fun sendClassReminder(context: Context, course: Course, dateText: String, startText: String) {
         val content = buildString {
             append(dateText).append(' ').append(startText).append(" 开始 · ")
             append(course.location.ifBlank { "地点待定" })
         }
-        val fullScreenPi = PendingIntent.getActivity(
-            context, 1,
-            Intent(context, ReminderActivity::class.java)
-                .putExtra(ReminderActivity.EXTRA_COURSE, json.encodeToString(Course.serializer(), course))
-                .putExtra(ReminderActivity.EXTRA_DATE, dateText)
-                .putExtra(ReminderActivity.EXTRA_START, startText)
-                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP),
-            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
-        )
-        notify(context, NotificationChannels.CHANNEL_REMINDER_FSI, reminderNotificationId(course)) {
-            setSmallIcon(R.drawable.ic_launcher_foreground)
+        notify(context, NotificationChannels.CHANNEL_REMINDER, reminderNotificationId(course)) {
+            setSmallIcon(R.drawable.ic_stat_class)
             setContentTitle("上课提醒：${course.name}")
             setContentText(content)
             setStyle(NotificationCompat.BigTextStyle().bigText(content))
-            setContentIntent(fullScreenPi)
-            setFullScreenIntent(fullScreenPi, true)
-            setOngoing(true) // 必须手动关闭
-            setAutoCancel(false)
+            setAutoCancel(true)
             setPriority(NotificationCompat.PRIORITY_HIGH)
         }
     }
@@ -78,7 +61,7 @@ object ClassNotifier {
             if (c.teacher.isNotBlank()) append(" · ").append(c.teacher)
         }
         notify(context, NotificationChannels.CHANNEL_NOW, NOTIF_ID_NOW) {
-            setSmallIcon(R.drawable.ic_launcher_foreground)
+            setSmallIcon(R.drawable.ic_stat_class)
             setContentTitle(title)
             setContentText(text)
             setStyle(NotificationCompat.BigTextStyle().bigText(text))
@@ -87,7 +70,7 @@ object ClassNotifier {
         }
     }
 
-    /** 测试提醒：以闹钟式全屏提醒演示正式效果（响铃 + 全屏 + 手动关闭）。 */
+    /** 测试提醒：发一条"上课提醒"（声音 + 震动，无全屏）。 */
     fun sendTestReminder(context: Context) {
         val testCourse = Course(
             name = "测试上课提醒",
@@ -113,7 +96,7 @@ object ClassNotifier {
             if (isBlank()) append("内容有变化")
         }
         notify(context, NotificationChannels.CHANNEL_SYNC, NOTIF_ID_SYNC) {
-            setSmallIcon(R.drawable.ic_launcher_foreground)
+            setSmallIcon(R.drawable.ic_stat_class)
             setContentTitle(title)
             setContentText(text.trimEnd(' ', '·'))
             setAutoCancel(true)

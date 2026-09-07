@@ -34,6 +34,7 @@ class SyncRepository(
         object NeedLogin : SyncError()
         object LoginFailed : SyncError()
         object FetchFailed : SyncError()
+        data class Network(val msg: String) : SyncError()
         data class Message(val msg: String) : SyncError()
     }
 
@@ -48,8 +49,13 @@ class SyncRepository(
      */
     suspend fun sync(userName: String? = null, password: String? = null): SyncResult {
         if (userName != null && password != null) {
-            val ok = api.login(userName, password)
-            if (!ok) throw SyncError.LoginFailed
+            when (val result = api.login(userName, password)) {
+                EduApi.LoginResult.Success -> {}
+                is EduApi.LoginResult.WrongCredentials -> throw SyncError.LoginFailed
+                is EduApi.LoginResult.NetworkError -> throw SyncError.Network(
+                    "无法连接教务系统（可能不在校园网或需要校园 VPN），请检查网络后重试"
+                )
+            }
         }
 
         val current = api.fetchCurrentXnxq() ?: throw SyncError.FetchFailed

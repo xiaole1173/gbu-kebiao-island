@@ -56,6 +56,7 @@ private val timeFmt = DateTimeFormatter.ofPattern("HH:mm")
 fun TodayScreen(viewModel: TodayViewModel = viewModel()) {
     val date by viewModel.selectedDate.collectAsState()
     val week by viewModel.currentWeek.collectAsState()
+    val holiday by viewModel.isHoliday.collectAsState()
     val today = java.time.LocalDate.now()
 
     Column(
@@ -98,6 +99,30 @@ fun TodayScreen(viewModel: TodayViewModel = viewModel()) {
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
             TextButton(onClick = { viewModel.backToToday() }) {
                 Text("回到今天", style = MaterialTheme.typography.bodySmall)
+            }
+        }
+
+        // 节假日横幅（校历灰色块：当天无课）
+        if (holiday) {
+            val holidayName = com.gbu.classisland.data.calendar.AcademicCalendar.holidayName(date)
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.errorContainer
+                )
+            ) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text(
+                        text = if (holidayName != null) "$holidayName 放假" else "今日放假（校历节假日）",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = MaterialTheme.colorScheme.onErrorContainer
+                    )
+                    Text(
+                        "校历标注的节假日/停课日，当天没有课程",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onErrorContainer.copy(alpha = 0.7f)
+                    )
+                }
             }
         }
 

@@ -18,6 +18,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import java.time.LocalDate
 import java.time.LocalDateTime
@@ -55,9 +56,17 @@ class TodayViewModel(app: Application) : AndroidViewModel(app) {
             ?.let { TimetableEngine.currentWeek(it, d) } ?: 0
     }.stateIn(viewModelScope, SharingStarted.Lazily, 0)
 
-    /** 所选日期的课程（按开始时间排序），空=那天没课。 */
+    /** 所选日期是否节假日/停课（校历灰色块，当天无课）。 */
+    val isHoliday: StateFlow<Boolean> = selectedDate
+        .map { com.gbu.classisland.data.calendar.AcademicCalendar.isHoliday(it) }
+        .stateIn(viewModelScope, SharingStarted.Lazily, false)
+
+    /** 所选日期的课程（按开始时间排序），空=那天没课。节假日当天直接为空。 */
     val daySessions: StateFlow<List<UpcomingClass>> =
         combine(courses, settings, selectedDate) { cs, s, d ->
+            if (com.gbu.classisland.data.calendar.AcademicCalendar.isHoliday(d)) {
+                return@combine emptyList()
+            }
             val sections = s?.sections ?: return@combine emptyList()
             val week = runCatching { LocalDate.parse(s.termStartDate ?: "") }.getOrNull()
                 ?.let { TimetableEngine.currentWeek(it, d) } ?: return@combine emptyList()
@@ -75,9 +84,13 @@ class TodayViewModel(app: Application) : AndroidViewModel(app) {
      * 所选日期的"当前/下一节"：
      * - 看今天：正在进行 或 今天接下来的第一节
      * - 看其他日期：该天第一节（预览用）
+     * 节假日当天返回 null（无课）。
      */
     val nextUpcoming: StateFlow<UpcomingClass?> =
         combine(courses, settings, selectedDate) { cs, s, d ->
+            if (com.gbu.classisland.data.calendar.AcademicCalendar.isHoliday(d)) {
+                return@combine null
+            }
             val sections = s?.sections ?: return@combine null
             val termStart = runCatching { LocalDate.parse(s.termStartDate ?: "") }.getOrNull()
                 ?: return@combine null

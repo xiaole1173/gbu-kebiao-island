@@ -66,9 +66,11 @@ class TodayWidgetProvider : AppWidgetProvider() {
             else AppDatabase.get(context).courseDao().getBySemester(settings.currentSemesterId)
 
             val today = LocalDate.now()
+            val holidayName = com.gbu.classisland.data.calendar.AcademicCalendar.holidayName(today)
+            val isHoliday = com.gbu.classisland.data.calendar.AcademicCalendar.isHoliday(today)
             val week = runCatching { LocalDate.parse(settings.termStartDate) }.getOrNull()
                 ?.let { TimetableEngine.currentWeek(it, today) } ?: 0
-            val next = if (week > 0)
+            val next = if (week > 0 && !isHoliday)
                 TimetableEngine.upcoming(courses, LocalDateTime.now(), settings.sections, today)
             else null
 
@@ -79,7 +81,13 @@ class TodayWidgetProvider : AppWidgetProvider() {
                     R.id.widget_week,
                     if (week > 0) "第 $week 周" else "未开学"
                 )
-                if (next == null) {
+                if (isHoliday) {
+                    views.setTextViewText(
+                        R.id.widget_next_title,
+                        if (holidayName != null) "$holidayName 放假" else "今日放假"
+                    )
+                    views.setTextViewText(R.id.widget_next_detail, "校历节假日/停课，无课程")
+                } else if (next == null) {
                     views.setTextViewText(R.id.widget_next_title, "暂无课程")
                     views.setTextViewText(
                         R.id.widget_next_detail,

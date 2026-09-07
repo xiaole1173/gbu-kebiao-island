@@ -12,8 +12,8 @@
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
     <!-- 引导用户豁免电池优化（避免后台被杀导致提醒失效） -->
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
-    <!-- 闹钟式全屏提醒（锁屏/使用中全屏显示） -->
-    <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
+    <!-- 灵动岛/常驻通知提升到状态栏胶囊（Android 16+） -->
+    <uses-permission android:name="android.permission.POST_PROMOTED_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.VIBRATE" />
     <!-- 应用内更新：安装新版本 APK -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
@@ -36,22 +36,13 @@
             </intent-filter>
         </activity>
 
-        <!-- 闹钟式全屏上课提醒 -->
-        <activity
-            android:name=".reminder.ReminderActivity"
-            android:exported="false"
-            android:excludeFromRecents="true"
-            android:launchMode="singleTop"
-            android:showWhenLocked="true"
-            android:turnScreenOn="true"
-            android:theme="@style/Theme.ReminderAlarm" />
-
-        <!-- 上课提醒闹钟接收器 -->
+        <!-- 上课提醒闹钟接收器（提前提醒通知 + 灵动岛 tick） -->
         <receiver
             android:name=".reminder.ReminderScheduler$ReminderReceiver"
             android:exported="false">
             <intent-filter>
                 <action android:name="com.gbu.classisland.ACTION_CLASS_REMINDER" />
+                <action android:name="com.gbu.classisland.action.LIVE_TICK" />
             </intent-filter>
         </receiver>
 

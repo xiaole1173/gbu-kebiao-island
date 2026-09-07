@@ -13,6 +13,7 @@ import com.gbu.classisland.data.Course
 import com.gbu.classisland.data.settings.SettingsRepository
 import com.gbu.classisland.model.SectionTime
 import com.gbu.classisland.notification.ClassNotifier
+import com.gbu.classisland.notification.LiveUpdateNotifier
 import com.gbu.classisland.util.TimetableEngine
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -25,13 +26,12 @@ import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
 /**
- * 上课提醒调度：找到最近的"上课时间 - 提前分钟"闹钟，AlarmManager 精确触发。
+ * 上课提醒 + 灵动岛调度。
  *
- * 触发链路（标准闹钟方案，保证前后台/锁屏都能弹出）：
- *   AlarmManager → ReminderReceiver（广播）
- *     ├─ 前台：直接 startActivity 拉起全屏提醒（前台启动无限制）
- *     └─ 后台/锁屏：发 fullScreenIntent 通知，由系统保证立即全屏
- *   每次触发后自动重排下一个，提醒链路不断。
+ * - 上课提醒：找到最近的"上课时间 - 提前分钟"闹钟，AlarmManager 精确触发 →
+ *   发一条高优先级通知（声音 + 震动，由提醒频道保证）。每次触发后自动重排下一个。
+ * - 灵动岛：为最近一节课调用 [LiveUpdateNotifier.scheduleForClass]，上课前候课
+ *   倒计时、上课中进度条，提升为状态栏胶囊。
  */
 object ReminderScheduler {
 
@@ -80,6 +80,8 @@ object ReminderScheduler {
         var nearest: Pair<LocalDateTime, Course>? = null
         for (dayOffset in 0..7) {
             val date = now.toLocalDate().plusDays(dayOffset.toLong())
+            // 校历节假日/停课日：当天无课，不提醒、不开灵动岛
+            if (com.gbu.classisland.data.calendar.AcademicCalendar.isHoliday(date)) continue
             val dayCourses = TimetableEngine.coursesOn(courses, date, week)
             for (c in dayCourses) {
                 val (start, _) = TimetableEngine.sessionTimes(c, date, sections) ?: continue
@@ -95,7 +97,7 @@ object ReminderScheduler {
         val (trigger, course) = nearest ?: return
         val atEpoch = trigger.atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
 
-        // 闹钟触发 → 广播接收器（Receiver 负责前台直启 + 后台 fullScreenIntent 通知）
+        // 上课提醒闹钟 → 广播接收器（发"提前 X 分钟"通知，声音+震动）
         val pi = remindBroadcastPendingIntent(context, course, trigger)
         if (canScheduleExact(context)) {
             alarm.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, atEpoch, pi)
@@ -103,7 +105,14 @@ object ReminderScheduler {
             alarm.set(AlarmManager.RTC_WAKEUP, atEpoch, pi) // 无精确权限时降级
         }
 
-        // 顺带刷新"当前/下一节课"常驻通知（供岛/胶囊显示）
+        // 灵动岛：为最近一节课安排候课倒计时 + 上课进度
+        val (start, end) = TimetableEngine.sessionTimes(course, trigger.toLocalDate(), sections)
+            ?: return
+        LiveUpdateNotifier.scheduleForClass(
+            context, course.name, course.location, start, end, now, leadMinutes = remindMinutes
+        )
+
+        // 顺带刷新"当前/下一节课"常驻通知
         val upcoming = TimetableEngine.upcoming(courses, now, sections, termStart)
         ClassNotifier.showNowClass(context, upcoming)
     }
@@ -124,10 +133,28 @@ object ReminderScheduler {
         )
     }
 
-    /** 提醒广播接收器：前台直接全屏提醒；后台/锁屏 fullScreenIntent 通知（响铃+全屏），并自动重排。 */
+    /** 提醒 + 灵动岛 tick 接收器：发提前提醒通知；刷新灵动岛进度；并自动重排。 */
     class ReminderReceiver : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
-            if (intent.action != ACTION_REMIND) return
+            when (intent.action) {
+                LiveUpdateNotifier.ACTION_TICK -> {
+                    // 灵动岛进度 tick
+                    LiveUpdateNotifier.onTick(
+                        context,
+                        intent.getStringExtra(LiveUpdateNotifier.EXTRA_NAME) ?: return,
+                        intent.getStringExtra(LiveUpdateNotifier.EXTRA_ROOM).orEmpty(),
+                        intent.getLongExtra(LiveUpdateNotifier.EXTRA_START, 0L),
+                        intent.getLongExtra(LiveUpdateNotifier.EXTRA_END, 0L),
+                        intent.getLongExtra(LiveUpdateNotifier.EXTRA_ANCHOR, 0L),
+                        intent.getIntExtra(LiveUpdateNotifier.EXTRA_SCALE, 1),
+                        intent.getLongExtra(LiveUpdateNotifier.EXTRA_WAIT_START, 0L),
+                    )
+                    return
+                }
+                ACTION_REMIND -> { /* 提前提醒通知，见下 */ }
+                else -> return
+            }
+
             val result = goAsync()
             CoroutineScope(Dispatchers.IO).launch {
                 try {
@@ -137,20 +164,8 @@ object ReminderScheduler {
                     if (course != null) {
                         val dateText = intent.getStringExtra(EXTRA_DATE) ?: ""
                         val startText = intent.getStringExtra(EXTRA_START) ?: ""
-                        if (com.gbu.classisland.ForegroundTracker.isForeground) {
-                            // 前台：直接全屏拉起提醒界面（前台无后台启动限制）
-                            runCatching {
-                                val actIntent = Intent(context, ReminderActivity::class.java)
-                                    .putExtra(ReminderActivity.EXTRA_COURSE, courseJson)
-                                    .putExtra(ReminderActivity.EXTRA_DATE, dateText)
-                                    .putExtra(ReminderActivity.EXTRA_START, startText)
-                                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
-                                context.startActivity(actIntent)
-                            }
-                        } else {
-                            // 后台/锁屏：fullScreenIntent 闹钟式通知（响铃 + 系统拉起全屏）
-                            ClassNotifier.sendClassReminder(context, course, dateText, startText)
-                        }
+                        // 提前 X 分钟提醒：高优先级通知（声音 + 震动，由频道保证）
+                        ClassNotifier.sendClassReminder(context, course, dateText, startText)
                     }
                     reschedule(context)
                 } finally {

@@ -60,14 +60,15 @@ fun SettingsScreen(viewModel: SettingsViewModel = viewModel()) {
     val syncState by viewModel.syncState.collectAsState()
     val hasCredentials by viewModel.hasCredentials.collectAsState()
     val batteryIgnored by viewModel.batteryOptimizationIgnored.collectAsState()
-    val fullScreen by viewModel.fullScreenEnabled.collectAsState()
+    val promotedNotif by viewModel.promotedNotifEnabled.collectAsState()
+    val installPackages by viewModel.installPackagesGranted.collectAsState()
     val credits by viewModel.creditSummary.collectAsState()
     val semCredits by viewModel.currentSemesterCredits.collectAsState()
     val testHint by viewModel.testReminderHint.collectAsState()
     val checks by viewModel.reminderChecks.collectAsState()
     val updateState by viewModel.updateState.collectAsState()
 
-    // 进入设置页 / 从系统设置返回（onResume）时刷新提醒相关状态
+    // 进入设置页 / 从系统设置返回（onResume）时刷新权限状态
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { viewModel.refreshReminderChecks() }
 
     var userName by remember { mutableStateOf(settings?.eduUserName ?: "") }
@@ -86,6 +87,10 @@ fun SettingsScreen(viewModel: SettingsViewModel = viewModel()) {
     val notificationPermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { granted -> if (granted) viewModel.sendTestReminderWithHint() }
+    // 灵动岛常驻通知权限（Android 16+）
+    val promotedNotifLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { viewModel.refreshReminderChecks() }
 
     val context = LocalContext.current
     fun requestOrSendTestReminder() {
@@ -99,7 +104,6 @@ fun SettingsScreen(viewModel: SettingsViewModel = viewModel()) {
     }
 
     var showDatePicker by remember { mutableStateOf(false) }
-    var showFullScreenPrompt by remember { mutableStateOf(false) }
     val datePickerState = rememberDatePickerState(
         initialSelectedDateMillis = runCatching {
             java.time.LocalDate.parse(settings?.termStartDate ?: "")
@@ -335,10 +339,7 @@ fun SettingsScreen(viewModel: SettingsViewModel = viewModel()) {
                         )
                     }
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        OutlinedButton(onClick = {
-                            if (fullScreen) requestOrSendTestReminder()
-                            else showFullScreenPrompt = true
-                        }) {
+                        OutlinedButton(onClick = { requestOrSendTestReminder() }) {
                             Text("测试提醒")
                         }
                     }
@@ -354,47 +355,76 @@ fun SettingsScreen(viewModel: SettingsViewModel = viewModel()) {
         }
 
         item {
-            // ── 提醒与后台（自检）─────────────────────────────────────────
+            // ── 权限总览 ──────────────────────────────────────────────────
             Card(modifier = Modifier.fillMaxWidth()) {
-                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Text("提醒与后台（自检）", style = MaterialTheme.typography.titleMedium)
-                    CheckRow("通知权限", checks.notificationsEnabled, "已开启", "已关闭（提醒不显示）")
-                    CheckRow("精确闹钟", checks.exactAlarmGranted, "已授权", "未授权（可能延迟）")
-                    CheckRow("电池优化", batteryIgnored, "已豁免", "未豁免（可能被杀）")
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text("自启动", style = MaterialTheme.typography.bodyMedium)
-                        Text(
-                            "无法自动检测，请点下方按钮确认开启",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.outline
-                        )
-                    }
-                    HorizontalDivider()
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        OutlinedButton(onClick = { viewModel.openNotificationSettings() }) {
-                            Text("通知设置")
-                        }
-                        OutlinedButton(onClick = { viewModel.openFullScreenSettings() }) {
-                            Text("全屏设置")
-                        }
-                    }
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        OutlinedButton(onClick = { viewModel.openExactAlarmSettings() }) {
-                            Text("精确闹钟")
-                        }
-                        OutlinedButton(onClick = { viewModel.openAutostartSettings() }) {
-                            Text("自启动")
-                        }
-                        OutlinedButton(onClick = { viewModel.openBatteryOptimizationSettings() }) {
-                            Text("电池")
-                        }
-                    }
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("权限总览", style = MaterialTheme.typography.titleMedium)
                     Text(
-                        "小米还需手动开启：① 通知→课表小岛→「上课提醒」类别：锁屏通知=显示所有内容 ② 后台弹出界面=允许 ③ 自启动",
+                        "上课提醒需要「通知 + 声音 + 震动」，灵动岛需「常驻通知」，应用内更新需「安装未知来源」。逐项授权后可一键自检。",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.outline
+                    )
+                    HorizontalDivider()
+                    PermissionRow(
+                        title = "通知权限",
+                        desc = "上课提醒（声音 + 震动）与灵动岛展示",
+                        granted = checks.notificationsEnabled,
+                        actionLabel = "去授权",
+                        onAction = {
+                            if (android.os.Build.VERSION.SDK_INT >= 33 &&
+                                context.checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) !=
+                                android.content.pm.PackageManager.PERMISSION_GRANTED
+                            ) {
+                                notificationPermissionLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+                            } else {
+                                viewModel.openNotificationSettings()
+                            }
+                        }
+                    )
+                    PermissionRow(
+                        title = "灵动岛常驻通知",
+                        desc = "上课前后的状态栏胶囊 / 灵动岛倒计时",
+                        granted = promotedNotif,
+                        actionLabel = "去授权",
+                        onAction = {
+                            if (android.os.Build.VERSION.SDK_INT >= 36) {
+                                promotedNotifLauncher.launch("android.permission.POST_PROMOTED_NOTIFICATIONS")
+                            }
+                        }
+                    )
+                    PermissionRow(
+                        title = "精确闹钟",
+                        desc = "确保上课提醒准时触发",
+                        granted = checks.exactAlarmGranted,
+                        actionLabel = "去授权",
+                        onAction = { viewModel.openExactAlarmSettings() }
+                    )
+                    PermissionRow(
+                        title = "电池优化",
+                        desc = "设为「无限制」，避免后台被杀提醒失效",
+                        granted = batteryIgnored,
+                        actionLabel = "去设置",
+                        onAction = { viewModel.openBatteryOptimizationSettings() }
+                    )
+                    PermissionRow(
+                        title = "安装未知来源应用",
+                        desc = "允许应用内自动更新时安装新版",
+                        granted = installPackages,
+                        actionLabel = "去开启",
+                        onAction = {
+                            com.gbu.classisland.update.UpdateManager.openInstallPermissionSettings(context)
+                        }
+                    )
+                    PermissionRow(
+                        title = "自启动",
+                        desc = "开机/后台自动重排提醒（小米需手动开启）",
+                        granted = null,
+                        actionLabel = "去设置",
+                        onAction = { viewModel.openAutostartSettings() }
+                    )
+                    HorizontalDivider()
+                    Text(
+                        "小米注意：通知 → 课表小岛 →「上课提醒」类别需设为「所有通知/高」才能响铃+震动；自启动需手动允许。",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.outline
                     )
@@ -519,13 +549,13 @@ fun SettingsScreen(viewModel: SettingsViewModel = viewModel()) {
                     AboutRow("版权", "© 2026 影 / Shadow / xiaole1173")
                     AboutRow("开源协议", "MIT License")
                     Text(
-                        "本项目为开源软件，源码已发布到 GitHub（点击打开仓库）：",
+                        "本项目为开源软件，源码已开源（点击打开仓库）：",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.outline
                     )
                     val uriHandler = LocalUriHandler.current
                     Text(
-                        "github.com/xiaole1173/gbu-kebiao-island",
+                        "GitHub · github.com/xiaole1173/gbu-kebiao-island",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.primary,
                         fontWeight = FontWeight.Medium,
@@ -533,29 +563,18 @@ fun SettingsScreen(viewModel: SettingsViewModel = viewModel()) {
                             uriHandler.openUri("https://github.com/xiaole1173/gbu-kebiao-island")
                         }
                     )
+                    Text(
+                        "Gitee · gitee.com/xiaole1173/gbu-kebiao-island",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.primary,
+                        fontWeight = FontWeight.Medium,
+                        modifier = Modifier.clickable {
+                            uriHandler.openUri("https://gitee.com/xiaole1173/gbu-kebiao-island")
+                        }
+                    )
                 }
             }
         }
-    }
-
-    // 全屏提醒引导（征得同意后才跳转系统设置，不自动跳转）
-    if (showFullScreenPrompt) {
-        AlertDialog(
-            onDismissRequest = { showFullScreenPrompt = false },
-            title = { Text("全屏提醒未开启") },
-            text = {
-                Text("全屏提醒需要在系统设置中开启，否则提醒只会出现在通知栏而不会自动全屏。是否前往系统设置开启？")
-            },
-            confirmButton = {
-                TextButton(onClick = {
-                    showFullScreenPrompt = false
-                    viewModel.openFullScreenSettings()
-                }) { Text("去设置") }
-            },
-            dismissButton = {
-                TextButton(onClick = { showFullScreenPrompt = false }) { Text("取消") }
-            }
-        )
     }
 
     // 开学日期选择
@@ -585,21 +604,39 @@ fun SettingsScreen(viewModel: SettingsViewModel = viewModel()) {
 private fun fmtCredit(v: Double): String =
     if (v == Math.floor(v)) v.toLong().toString() else v.toString()
 
-/** 自检行：标签 + 状态（绿=正常，红=需处理）。 */
+/**
+ * 权限行：标题 + 说明在左，状态按钮在右（与各权限齐平）。
+ * granted=true → 按钮禁用显示"已开启"；false → 按钮可点"去授权"；null → 无法检测，按钮"去设置"。
+ */
 @Composable
-private fun CheckRow(label: String, ok: Boolean, okText: String, badText: String) {
+private fun PermissionRow(
+    title: String,
+    desc: String,
+    granted: Boolean?,
+    actionLabel: String,
+    onAction: () -> Unit
+) {
     Row(
         modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Text(label, style = MaterialTheme.typography.bodyMedium)
-        Text(
-            if (ok) okText else badText,
-            style = MaterialTheme.typography.bodySmall,
-            color = if (ok) MaterialTheme.colorScheme.primary
-            else MaterialTheme.colorScheme.error
-        )
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(title, style = MaterialTheme.typography.titleSmall)
+            Text(desc, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.outline, fontSize = 12.sp)
+        }
+        val grantedNow = granted ?: false
+        OutlinedButton(
+            onClick = onAction,
+            enabled = !grantedNow,
+            modifier = Modifier.height(40.dp)
+        ) {
+            Text(
+                if (granted == null) actionLabel
+                else if (grantedNow) "已开启" else actionLabel,
+                fontSize = 12.sp
+            )
+        }
     }
 }
 

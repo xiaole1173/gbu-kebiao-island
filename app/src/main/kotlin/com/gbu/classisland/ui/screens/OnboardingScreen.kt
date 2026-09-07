@@ -181,7 +181,7 @@ private fun PermissionStep(
 ) {
     val context = LocalContext.current
     val checks by viewModel.reminderChecks.collectAsState()
-    val fullScreen by viewModel.fullScreenEnabled.collectAsState()
+    val promotedNotif by viewModel.promotedNotifEnabled.collectAsState()
     val batteryIgnored by viewModel.batteryOptimizationIgnored.collectAsState()
     // 安装未知来源应用：从系统设置返回后刷新状态
     var canInstall by remember { mutableStateOf(context.packageManager.canRequestPackageInstalls()) }
@@ -193,6 +193,9 @@ private fun PermissionStep(
     }
 
     val notificationLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { viewModel.refreshReminderChecks() }
+    val promotedLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { viewModel.refreshReminderChecks() }
 
@@ -218,7 +221,7 @@ private fun PermissionStep(
 
         PermissionGrantItem(
             title = "通知权限",
-            desc = "上课提醒弹窗与响铃",
+            desc = "上课提醒「提前 X 分钟」弹通知（声音 + 震动）",
             granted = checks.notificationsEnabled,
             onGrant = {
                 if (context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) !=
@@ -231,16 +234,20 @@ private fun PermissionStep(
             }
         )
         PermissionGrantItem(
+            title = "灵动岛常驻通知",
+            desc = "上课前后的状态栏胶囊 / 灵动岛倒计时",
+            granted = promotedNotif,
+            onGrant = {
+                if (android.os.Build.VERSION.SDK_INT >= 36) {
+                    promotedLauncher.launch("android.permission.POST_PROMOTED_NOTIFICATIONS")
+                }
+            }
+        )
+        PermissionGrantItem(
             title = "精确闹钟",
             desc = "确保上课提醒准时触发",
             granted = checks.exactAlarmGranted,
             onGrant = { viewModel.openExactAlarmSettings() }
-        )
-        PermissionGrantItem(
-            title = "全屏提醒",
-            desc = "锁屏时全屏弹出上课提醒",
-            granted = fullScreen,
-            onGrant = { viewModel.openFullScreenSettings() }
         )
         PermissionGrantItem(
             title = "电池优化",

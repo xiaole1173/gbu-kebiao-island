@@ -10,7 +10,8 @@ import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -45,7 +46,9 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.clipRect
+import androidx.compose.ui.input.pointer.changedToUp
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.positionChanged
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
@@ -305,7 +308,8 @@ private fun computeLayout(
     courses: List<Course>,
     week: Int,
     canvasPx: IntSize,
-    density: Float
+    density: Float,
+    termStart: LocalDate?
 ): TimetableLayout {
     val headerH = 34f * density
     val rowHeaderW = 52f * density
@@ -314,12 +318,19 @@ private fun computeLayout(
     if (width <= 0f || height <= 0f) {
         return TimetableLayout(1..5, 0f, 0f, headerH, rowHeaderW, 12, emptyList())
     }
-    // 该周有效的课程
-    val weekCourses = courses.filter { c ->
+    // 该周有效的课程（含节假日当天，先用于确定列范围，块再过滤）
+    val allWeekCourses = courses.filter { c ->
         c.weeks.isBlank() || week in TimetableEngine.parseWeeks(c.weeks)
     }
-    // 动态天范围：只显示有课的天（默认到周五，避免无课周末空列）
-    val daysWithClasses = weekCourses.map { it.dayOfWeek }.distinct().sorted()
+    // 排除节假日当天的课程（校历灰色块：无课，隐藏课程、关闭提醒）
+    val weekCourses = if (termStart != null) {
+        allWeekCourses.filter { c ->
+            val date = termStart.plusWeeks((week - 1).toLong()).plusDays((c.dayOfWeek - 1).toLong())
+            !com.gbu.classisland.data.calendar.AcademicCalendar.isHoliday(date)
+        }
+    } else allWeekCourses
+    // 动态天范围：按未过滤的课程天确定（节假日列保留，用于显示"假"标记）
+    val daysWithClasses = allWeekCourses.map { it.dayOfWeek }.distinct().sorted()
     val dayRange = if (daysWithClasses.isEmpty()) 1..5
     else (daysWithClasses.first().coerceAtMost(5))..(daysWithClasses.last().coerceAtLeast(1))
     val colCount = dayRange.count()
@@ -344,8 +355,8 @@ fun TimetableGrid(
     val density = LocalDensity.current.density
     var canvasPx by remember { mutableStateOf(IntSize.Zero) }
 
-    val layout = remember(courses, week, canvasPx, density) {
-        computeLayout(courses, week, canvasPx, density)
+    val layout = remember(courses, week, canvasPx, density, termStart) {
+        computeLayout(courses, week, canvasPx, density, termStart)
     }
     val currentLayout by rememberUpdatedState(layout)
     // 主题感知的文字色（深色模式下 Canvas 文字/线必须跟随 onSurface，否则黑字看不见）
@@ -359,8 +370,27 @@ fun TimetableGrid(
         modifier = modifier
             .onSizeChanged { canvasPx = it }
             .pointerInput(Unit) {
-                detectTapGestures { offset ->
-                    currentLayout.hitTest(offset.x, offset.y)?.let { onCourseClick(it) }
+                // 严格点按：位移超过 touchSlop 视为滑动/拖动，不触发详情；仅在真正点按时命中
+                awaitEachGesture {
+                    val down = awaitFirstDown(requireUnconsumed = false)
+                    val start = down.position
+                    var isTap = true
+                    while (true) {
+                        val event = awaitPointerEvent()
+                        val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                        if (change.positionChanged() &&
+                            (change.position - start).getDistance() > viewConfiguration.touchSlop
+                        ) {
+                            isTap = false
+                        }
+                        if (change.changedToUp()) {
+                            if (isTap) {
+                                currentLayout.hitTest(change.position.x, change.position.y)
+                                    ?.let { onCourseClick(it) }
+                            }
+                            break
+                        }
+                    }
                 }
             }
     ) {
@@ -390,6 +420,7 @@ private data class BlockKey(val externalId: String, val day: Int, val start: Int
 private data class GridTexts(
     val headerLabels: Map<Int, androidx.compose.ui.text.TextLayoutResult>,
     val headerDates: Map<Int, androidx.compose.ui.text.TextLayoutResult>,
+    val holidayDays: Set<Int>,
     val rowNumbers: Map<Int, androidx.compose.ui.text.TextLayoutResult>,
     val rowTimes: Map<Int, androidx.compose.ui.text.TextLayoutResult>,
     val blockTitles: Map<BlockKey, androidx.compose.ui.text.TextLayoutResult>,
@@ -406,6 +437,12 @@ private fun buildGridTexts(
     onSurface: Color
 ): GridTexts {
     val dim = onSurface.copy(alpha = 0.55f)
+    val holidayRed = Color(0xFFE53935)
+    // 节假日天（校历灰色块）：列头标"假"
+    val holidayDays = layout.dayRange.filter { day ->
+        termStart?.plusWeeks((week - 1).toLong())?.plusDays((day - 1).toLong())
+            ?.let { com.gbu.classisland.data.calendar.AcademicCalendar.isHoliday(it) } == true
+    }.toSet()
     val headerLabels = layout.dayRange.associateWith { day ->
         textMeasurer.measure(
             text = androidx.compose.ui.text.buildAnnotatedString { append(WEEK_LABELS[day - 1]) },
@@ -418,9 +455,15 @@ private fun buildGridTexts(
     }
     val headerDates = layout.dayRange.mapNotNull { day ->
         val date = termStart?.plusWeeks(week - 1L)?.plusDays((day - 1).toLong()) ?: return@mapNotNull null
+        val isHoliday = day in holidayDays
         day to textMeasurer.measure(
-            text = androidx.compose.ui.text.buildAnnotatedString { append("${date.monthValue}/${date.dayOfMonth}") },
-            style = androidx.compose.ui.text.TextStyle(fontSize = 10.sp, color = dim)
+            text = androidx.compose.ui.text.buildAnnotatedString {
+                append(if (isHoliday) "假 ${date.monthValue}/${date.dayOfMonth}" else "${date.monthValue}/${date.dayOfMonth}")
+            },
+            style = androidx.compose.ui.text.TextStyle(
+                fontSize = 10.sp,
+                color = if (isHoliday) holidayRed else dim
+            )
         )
     }.toMap()
     val rowNumbers = (1..layout.maxSection).associateWith { s ->
@@ -458,7 +501,7 @@ private fun buildGridTexts(
             constraints = androidx.compose.ui.unit.Constraints(maxWidth = textMaxW, maxHeight = Int.MAX_VALUE)
         )
     }
-    return GridTexts(headerLabels, headerDates, rowNumbers, rowTimes, blockTitles, blockLocs)
+    return GridTexts(headerLabels, headerDates, holidayDays, rowNumbers, rowTimes, blockTitles, blockLocs)
 }
 
 /** 列头：星期 + 日期，今天所在列高亮。 */
@@ -475,6 +518,13 @@ private fun DrawScope.drawColumnHeader(
         if (today == date) {
             drawRect(
                 color = Color(0x1A1B5E9E),
+                topLeft = Offset(x, 0f),
+                size = Size(layout.colW, layout.headerH)
+            )
+        } else if (day in texts.holidayDays) {
+            // 节假日列头：淡红底色标识"假"
+            drawRect(
+                color = Color(0x22E53935),
                 topLeft = Offset(x, 0f),
                 size = Size(layout.colW, layout.headerH)
             )

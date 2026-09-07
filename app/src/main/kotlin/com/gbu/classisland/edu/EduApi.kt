@@ -55,12 +55,18 @@ class EduApi(
         @Serializable data class Errors(val code: String? = null, val msg: String? = null)
     }
 
+    /** 登录结果：区分「成功 / 密码错误 / 网络不可达」，避免把外网无法访问误报成账号密码错误。 */
+    sealed class LoginResult {
+        data object Success : LoginResult()
+        data class WrongCredentials(val msg: String? = null) : LoginResult()
+        data class NetworkError(val cause: Exception? = null) : LoginResult()
+    }
+
     /**
      * 统一身份认证登录。成功后会话 cookie 已写入 CookieJar。
-     * @return true=登录成功
      */
-    suspend fun login(userName: String, password: String): Boolean = withContext(Dispatchers.IO) {
-        runCatching {
+    suspend fun login(userName: String, password: String): LoginResult = withContext(Dispatchers.IO) {
+        try {
             // 1) 访问登录页种 cookie
             client.newCall(Request.Builder().url(LOGIN_PAGE).build()).execute().use { }
 
@@ -81,16 +87,20 @@ class EduApi(
                 .header("Referer", LOGIN_PAGE)
                 .build()
             val resp = client.newCall(req).execute()
-            val text = resp.body?.string() ?: return@runCatching false
+            val text = resp.body?.string() ?: return@withContext LoginResult.NetworkError()
             val login = json.decodeFromString<LoginResponse>(text)
-            if (!login.success) return@runCatching false
+            if (!login.success) {
+                return@withContext LoginResult.WrongCredentials(login.errors?.msg)
+            }
 
             // 3) 带 token 回跳，建立 jwxt 会话
             client.newCall(
                 Request.Builder().url("$CALLBACK?_rand=1&token=${login.token}").build()
             ).execute().use { }
-            true
-        }.getOrDefault(false)
+            LoginResult.Success
+        } catch (e: Exception) {
+            LoginResult.NetworkError(e)
+        }
     }
 
     // ── 课表接口 ────────────────────────────────────────────────────────────

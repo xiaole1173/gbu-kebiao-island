@@ -128,8 +128,11 @@ class SettingsViewModel(app: Application) : AndroidViewModel(app) {
     /** 电池优化是否已豁免（小米需设"无限制"否则后台被杀、提醒失效）。 */
     val batteryOptimizationIgnored = MutableStateFlow(checkBatteryOptimization())
 
-    /** 全屏提醒权限（Android 14+ 需在系统设置开启）。 */
-    val fullScreenEnabled = MutableStateFlow(checkFullScreen())
+    /** 灵动岛常驻通知权限（Android 16+ 需 POST_PROMOTED_NOTIFICATIONS）。 */
+    val promotedNotifEnabled = MutableStateFlow(checkPromotedNotif())
+
+    /** 允许安装未知来源应用（应用内更新安装 APK）。 */
+    val installPackagesGranted = MutableStateFlow(checkInstallPackages())
 
     /** 提醒链路自检状态。 */
     data class ReminderChecks(
@@ -148,7 +151,8 @@ class SettingsViewModel(app: Application) : AndroidViewModel(app) {
             exactAlarmGranted = com.gbu.classisland.reminder.ReminderScheduler.canScheduleExact(ctx)
         )
         batteryOptimizationIgnored.value = checkBatteryOptimization()
-        fullScreenEnabled.value = checkFullScreen()
+        promotedNotifEnabled.value = checkPromotedNotif()
+        installPackagesGranted.value = checkInstallPackages()
     }
 
     /** 打开"精确闹钟"设置页（Android 12+，否则提醒可能延迟）。 */
@@ -167,28 +171,22 @@ class SettingsViewModel(app: Application) : AndroidViewModel(app) {
         return pm?.isIgnoringBatteryOptimizations(getApplication<Application>().packageName) == true
     }
 
-    private fun checkFullScreen(): Boolean {
-        if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-            return true // Android 13 及以下无此限制
-        }
-        val nm = getApplication<Application>().getSystemService(android.app.NotificationManager::class.java)
-        return nm.canUseFullScreenIntent()
+    /** 灵动岛常驻通知权限（Android 16 起为运行时权限；16 以下视为已授权）。 */
+    private fun checkPromotedNotif(): Boolean {
+        if (android.os.Build.VERSION.SDK_INT < 36) return true
+        return androidx.core.content.ContextCompat.checkSelfPermission(
+            getApplication<Application>(),
+            "android.permission.POST_PROMOTED_NOTIFICATIONS"
+        ) == android.content.pm.PackageManager.PERMISSION_GRANTED
     }
 
-    fun refreshBatteryStatus() {
+    private fun checkInstallPackages(): Boolean =
+        getApplication<Application>().packageManager.canRequestPackageInstalls()
+
+    fun refreshPermissionStatus() {
         batteryOptimizationIgnored.value = checkBatteryOptimization()
-        fullScreenEnabled.value = checkFullScreen()
-    }
-
-    /** 打开系统"全屏提醒"设置页（Android 14+）。 */
-    fun openFullScreenSettings() {
-        if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.UPSIDE_DOWN_CAKE) return
-        val context = getApplication<Application>()
-        val intent = android.content.Intent(
-            android.provider.Settings.ACTION_MANAGE_APP_USE_FULL_SCREEN_INTENT,
-            android.net.Uri.parse("package:${context.packageName}")
-        ).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
-        runCatching { context.startActivity(intent) }
+        promotedNotifEnabled.value = checkPromotedNotif()
+        installPackagesGranted.value = checkInstallPackages()
     }
 
     /** 打开本应用通知设置页（调整通知级别：须为"所有通知/高"才能响铃+全屏）。 */
@@ -270,10 +268,9 @@ class SettingsViewModel(app: Application) : AndroidViewModel(app) {
     val testReminderHint = MutableStateFlow<String?>(null)
 
     /**
-     * 带延迟的全屏提醒测试。
+     * 带延迟的"提前上课提醒"测试。
      * 直接设置 5 秒后的系统闹钟（AlarmManager），走与正式提醒完全相同的
-     * 广播链路（前台直启 + 后台 fullScreenIntent），点完即可锁屏/回桌面，
-     * 闹钟由系统调度保证触发。
+     * 广播链路 → 发高优先级通知（声音 + 震动），可验证完整链路。
      */
     fun sendTestReminderWithHint() {
         val context = getApplication<Application>()
@@ -350,8 +347,9 @@ class SettingsViewModel(app: Application) : AndroidViewModel(app) {
             syncState.value = SyncUiState.Success(result.changed, result.syncedCount)
         } catch (e: SyncRepository.SyncError) {
             syncState.value = SyncUiState.Error(when (e) {
-                SyncRepository.SyncError.LoginFailed -> "登录失败，请检查账号密码"
+                SyncRepository.SyncError.LoginFailed -> "登录失败：账号或密码错误，请检查后重试"
                 SyncRepository.SyncError.FetchFailed -> "获取课表失败，请稍后重试"
+                is SyncRepository.SyncError.Network -> e.msg
                 is SyncRepository.SyncError.Message -> e.msg
                 SyncRepository.SyncError.NeedLogin -> "需要登录"
             })
