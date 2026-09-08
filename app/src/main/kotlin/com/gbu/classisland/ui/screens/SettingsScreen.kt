@@ -133,14 +133,14 @@ fun SettingsScreen(viewModel: SettingsViewModel = viewModel()) {
                     OutlinedTextField(
                         value = eduAuthUrl,
                         onValueChange = { eduAuthUrl = it },
-                        label = { Text("统一认证地址（如 https://iaaa.学校域名）") },
+                        label = { Text("统一认证地址") },
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth()
                     )
                     OutlinedTextField(
                         value = eduUrl,
                         onValueChange = { eduUrl = it },
-                        label = { Text("教务系统地址（如 https://jwxt.学校域名）") },
+                        label = { Text("教务系统地址") },
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth()
                     )

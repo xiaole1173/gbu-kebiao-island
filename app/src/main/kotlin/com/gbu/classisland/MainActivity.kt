@@ -33,9 +33,11 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.gbu.classisland.navigation.AppNavHost
+import com.gbu.classisland.ui.screens.AddressSetupScreen
 import com.gbu.classisland.ui.screens.OnboardingScreen
 import com.gbu.classisland.ui.theme.ClassIslandTheme
 import com.gbu.classisland.update.UpdateManager
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
@@ -61,6 +63,17 @@ private fun FirstRunGateAndNav() {
     }
     var guided by remember { mutableStateOf(prefs.getBoolean("guided", false)) }
     val scope = rememberCoroutineScope()
+    // 更新用户升级后首次打开：地址未配置且未引导过 → 显示专门引导页
+    var showAddressSetup by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) {
+        if (guided && !prefs.getBoolean("address_setup_shown", false)) {
+            val repo = com.gbu.classisland.data.settings.SettingsRepository(context)
+            val s = repo.settings.first()
+            if (s.eduBaseUrl.isBlank() || s.eduAuthBaseUrl.isBlank()) {
+                showAddressSetup = true
+            }
+        }
+    }
 
     // 启动自动检查更新（受 6 小时间隔限制，完成新手引导后才检查）
     var updateInfo by remember { mutableStateOf<UpdateManager.UpdateInfo?>(null) }
@@ -155,6 +168,25 @@ private fun FirstRunGateAndNav() {
             onFinished = {
                 prefs.edit().putBoolean("guided", true).apply()
                 guided = true
+            }
+        )
+    } else if (showAddressSetup) {
+        // 更新用户升级后首次打开：专门引导填写统一认证 + 教务地址（可跳过，稍后在设置页填）
+        AddressSetupScreen(
+            initialAuthUrl = "",
+            initialEduUrl = "",
+            onSave = { authUrl, eduUrl ->
+                val repo = com.gbu.classisland.data.settings.SettingsRepository(context)
+                scope.launch {
+                    repo.setEduAuthBaseUrl(authUrl)
+                    repo.setEduBaseUrl(eduUrl)
+                }
+                prefs.edit().putBoolean("address_setup_shown", true).apply()
+                showAddressSetup = false
+            },
+            onSkip = {
+                prefs.edit().putBoolean("address_setup_shown", true).apply()
+                showAddressSetup = false
             }
         )
     } else {

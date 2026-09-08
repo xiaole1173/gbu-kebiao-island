@@ -91,6 +91,77 @@ fun OnboardingScreen(
     }
 }
 
+/**
+ * 专门引导页：填写统一认证地址与教务系统地址。
+ * 用于更新用户升级后首次打开（可跳过，稍后在设置页填写）；
+ * 未填完时「完成」不可点，只有「跳过」可点。
+ */
+@Composable
+fun AddressSetupScreen(
+    initialAuthUrl: String,
+    initialEduUrl: String,
+    onSave: (authUrl: String, eduUrl: String) -> Unit,
+    onSkip: () -> Unit
+) {
+    var authUrl by remember { mutableStateOf(initialAuthUrl) }
+    var eduUrl by remember { mutableStateOf(initialEduUrl) }
+    val bothFilled = authUrl.isNotBlank() && eduUrl.isNotBlank()
+
+    Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 28.dp, vertical = 48.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
+            Spacer(Modifier.height(24.dp))
+            Text(
+                "设置教务系统地址",
+                style = MaterialTheme.typography.headlineMedium,
+                fontWeight = FontWeight.Bold
+            )
+            Spacer(Modifier.height(8.dp))
+            Text(
+                "请填写您学校的统一认证地址与教务系统地址（登录页网址），用于同步课表。" +
+                    "也可以跳过，稍后在设置页填写。",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.outline
+            )
+            Spacer(Modifier.height(16.dp))
+            OutlinedTextField(
+                value = authUrl,
+                onValueChange = { authUrl = it },
+                label = { Text("统一认证地址") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth()
+            )
+            OutlinedTextField(
+                value = eduUrl,
+                onValueChange = { eduUrl = it },
+                label = { Text("教务系统地址") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth()
+            )
+            Spacer(Modifier.weight(1f))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                OutlinedButton(
+                    onClick = onSkip,
+                    modifier = Modifier.weight(1f).height(50.dp)
+                ) { Text("跳过", fontSize = 16.sp) }
+                Button(
+                    onClick = { onSave(authUrl.trim(), eduUrl.trim()) },
+                    enabled = bothFilled,
+                    modifier = Modifier.weight(1f).height(50.dp)
+                ) { Text("完成", fontSize = 16.sp) }
+            }
+        }
+    }
+}
+
 /** 第一步：登录教务统一身份认证（可选，不登录也能下一步）。 */
 @Composable
 private fun LoginStep(
@@ -121,7 +192,7 @@ private fun LoginStep(
         Spacer(Modifier.height(8.dp))
         Text("第一步：填写教务系统地址并登录", style = MaterialTheme.typography.titleMedium)
         Text(
-            "请输入您学校的教务系统地址（登录页网址），用于同步课表。也可以先跳过，再到设置页填写。",
+            "请填写您学校的统一认证地址与教务系统地址（登录页网址），用于同步课表。也可以先跳过，再到设置页填写。",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.outline
         )
@@ -129,14 +200,14 @@ private fun LoginStep(
         OutlinedTextField(
             value = eduAuthUrl,
             onValueChange = { eduAuthUrl = it },
-            label = { Text("统一认证地址（如 https://iaaa.学校域名）") },
+            label = { Text("统一认证地址") },
             singleLine = true,
             modifier = Modifier.fillMaxWidth()
         )
         OutlinedTextField(
             value = eduUrl,
             onValueChange = { eduUrl = it },
-            label = { Text("教务系统地址（如 https://jwxt.学校域名）") },
+            label = { Text("教务系统地址") },
             singleLine = true,
             modifier = Modifier.fillMaxWidth()
         )
