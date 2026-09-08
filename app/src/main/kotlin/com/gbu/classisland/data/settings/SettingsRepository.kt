@@ -34,7 +34,9 @@ data class AppSettings(
     /** 开学日期（校历），用于当前周计算 */
     val termStartDate: String = "",
     /** 节次时间表（可编辑） */
-    val sections: List<SectionTime> = DefaultSections.list
+    val sections: List<SectionTime> = DefaultSections.list,
+    /** 教务系统地址（学生手动填写，如 https://jwxt.学校域名；空 = 未设置） */
+    val eduBaseUrl: String = ""
 )
 
 class SettingsRepository(context: Context) {
@@ -51,7 +53,8 @@ class SettingsRepository(context: Context) {
             themeMode = prefs[KEY_THEME] ?: "system",
             currentSemesterId = prefs[KEY_SEMESTER] ?: "",
             termStartDate = prefs[KEY_TERM_START] ?: "",
-            sections = DefaultSections.decode(prefs[KEY_SECTIONS] ?: "")
+            sections = DefaultSections.decode(prefs[KEY_SECTIONS] ?: ""),
+            eduBaseUrl = prefs[KEY_EDU_BASE_URL] ?: ""
         )
     }
 
@@ -74,6 +77,8 @@ class SettingsRepository(context: Context) {
     suspend fun setSections(sections: List<SectionTime>) =
         dataStore.edit { it[KEY_SECTIONS] = DefaultSections.encode(sections) }
 
+    suspend fun setEduBaseUrl(url: String) = dataStore.edit { it[KEY_EDU_BASE_URL] = url.trim() }
+
     private companion object {
         val KEY_EDU_USER = stringPreferencesKey("edu_user_name")
         val KEY_AUTO_SYNC = booleanPreferencesKey("auto_sync")
@@ -84,5 +89,6 @@ class SettingsRepository(context: Context) {
         val KEY_SEMESTER = stringPreferencesKey("current_semester")
         val KEY_TERM_START = stringPreferencesKey("term_start")
         val KEY_SECTIONS = stringPreferencesKey("sections_json")
+        val KEY_EDU_BASE_URL = stringPreferencesKey("edu_base_url")
     }
 }

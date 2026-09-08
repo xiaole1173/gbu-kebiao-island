@@ -91,7 +91,7 @@ fun OnboardingScreen(
     }
 }
 
-/** 第一步：登录大湾区大学统一身份认证（可选，不登录也能下一步）。 */
+/** 第一步：登录教务统一身份认证（可选，不登录也能下一步）。 */
 @Composable
 private fun LoginStep(
     viewModel: SettingsViewModel,
@@ -99,8 +99,10 @@ private fun LoginStep(
 ) {
     val hasCredentials by viewModel.hasCredentials.collectAsState()
     val syncState by viewModel.syncState.collectAsState()
+    val settings by viewModel.settings.collectAsState()
     var userName by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
+    var eduUrl by remember { mutableStateOf(settings?.eduBaseUrl ?: "") }
 
     Column(
         modifier = Modifier
@@ -116,13 +118,20 @@ private fun LoginStep(
             fontWeight = FontWeight.Bold
         )
         Spacer(Modifier.height(8.dp))
-        Text("第一步：登录大湾区大学统一身份认证", style = MaterialTheme.typography.titleMedium)
+        Text("第一步：填写教务系统地址并登录", style = MaterialTheme.typography.titleMedium)
         Text(
-            "这是为了获取您的课表信息。您可以先选择跳过，再在应用的设置页自行登录。",
+            "请输入您学校的教务系统地址（登录页网址），用于同步课表。也可以先跳过，再到设置页填写。",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.outline
         )
         Spacer(Modifier.height(16.dp))
+        OutlinedTextField(
+            value = eduUrl,
+            onValueChange = { eduUrl = it },
+            label = { Text("教务系统地址（如 https://jwxt.学校域名）") },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth()
+        )
         OutlinedTextField(
             value = userName,
             onValueChange = { userName = it },
@@ -140,7 +149,7 @@ private fun LoginStep(
             modifier = Modifier.fillMaxWidth()
         )
         Button(
-            onClick = { viewModel.saveCredentialsAndSync(userName, password) },
+            onClick = { viewModel.saveCredentialsAndSync(userName, password, eduUrl) },
             modifier = Modifier.fillMaxWidth().height(50.dp)
         ) {
             Text(if (hasCredentials) "更新密码并同步" else "登录并同步", fontSize = 16.sp)

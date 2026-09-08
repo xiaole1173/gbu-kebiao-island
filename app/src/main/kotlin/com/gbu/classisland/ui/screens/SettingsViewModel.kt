@@ -304,8 +304,8 @@ class SettingsViewModel(app: Application) : AndroidViewModel(app) {
         testReminderHint.value = "全屏提醒将在 5 秒后触发，现在可以锁屏或回到桌面（系统闹钟保证触发）"
     }
 
-    /** 保存凭据（Keystore 加密）并立即同步。 */
-    fun saveCredentialsAndSync(userName: String, password: String) {
+    /** 保存凭据（Keystore 加密）并立即同步。eduBaseUrl 非空时顺带保存教务地址（先存后同步，避免竞态）。 */
+    fun saveCredentialsAndSync(userName: String, password: String, eduBaseUrl: String? = null) {
         if (userName.isBlank()) {
             syncState.value = SyncUiState.Error("账号不能为空")
             return
@@ -317,6 +317,7 @@ class SettingsViewModel(app: Application) : AndroidViewModel(app) {
             return
         }
         viewModelScope.launch {
+            if (eduBaseUrl != null) settingsRepo.setEduBaseUrl(eduBaseUrl)
             secureStore.save(KEY_USER, userName.trim())
             secureStore.save(KEY_PASS, pass)
             settingsRepo.setEduUserName(userName.trim())
@@ -334,9 +335,15 @@ class SettingsViewModel(app: Application) : AndroidViewModel(app) {
 
     private suspend fun runSync(user: String, pass: String) {
         if (syncState.value is SyncUiState.Syncing) return
+        // 教务地址未配置：先引导填写
+        val baseUrl = settingsRepo.settings.first().eduBaseUrl
+        if (baseUrl.isBlank()) {
+            syncState.value = SyncUiState.Error("请先在设置中填写教务系统地址")
+            return
+        }
         syncState.value = SyncUiState.Syncing
         try {
-            val api = com.gbu.classisland.edu.EduApi()
+            val api = com.gbu.classisland.edu.EduApi(baseUrl = baseUrl)
             val repo = SyncRepository(api, db.courseDao(), db.libraryCourseDao())
             val result = repo.sync(userName = user, password = pass)
             result.semesterId?.let { settingsRepo.setCurrentSemester(it) }
@@ -403,6 +410,11 @@ class SettingsViewModel(app: Application) : AndroidViewModel(app) {
         settingsRepo.setTermStart(date)
         ReminderScheduler.reschedule(getApplication())
         com.gbu.classisland.widget.TodayWidgetProvider.refreshAll(getApplication())
+    }
+
+    /** 教务系统地址（手动填写）。 */
+    fun setEduBaseUrl(url: String) = viewModelScope.launch {
+        settingsRepo.setEduBaseUrl(url)
     }
 
     // ── 导出 ────────────────────────────────────────────────────────────────

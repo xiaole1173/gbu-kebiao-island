@@ -15,28 +15,50 @@ import okhttp3.Request
 import java.util.concurrent.TimeUnit
 
 /**
- * 大湾区大学教务系统（jwxt.gbu.edu.cn）统一身份认证（iaaa.gbu.edu.cn）与课表接口客户端。
+ * 教务系统（统一身份认证 + 课表接口）客户端。
+ * 教务地址由用户在「设置 / 新手引导」中手动填写（默认不内置任何学校域名）；
+ * 统一认证地址按「iaaa.<父域名>」约定由教务地址推导（如 <教务>.<父域名> → iaaa.<父域名>）。
  *
  * 登录链路（已验证，无验证码时一次通过）：
- *   GET  oauth.jsp?appID=gbu_jwxt&redirectUrl=...        → 种会话 cookie
- *   POST /iaaa/oauthlogin.do (form)                      → {"success":true,"token":"..."}
- *   GET  jwxt /oauth/login/code?_rand=1&token=TOKEN       → 落地 /authentication/main 建立 jwxt 会话
+ *   GET  oauth.jsp?appID=...&redirectUrl=...        → 种会话 cookie
+ *   POST /iaaa/oauthlogin.do (form)                  → {"success":true,"token":"..."}
+ *   GET  <教务>/oauth/login/code?_rand=1&token=TOKEN  → 落地 /authentication/main 建立会话
  *
  * 仅获取本人课表数据，绝不批量爬取。
  */
 class EduApi(
+    private val baseUrl: String = "",
     private val client: OkHttpClient = defaultClient()
 ) {
     // coerceInputValues: 服务端个别记录（如备注行）JSJC/KSJC 可能为 null，强制为默认值
     private val json = Json { ignoreUnknownKeys = true; coerceInputValues = true }
 
-    companion object {
-        const val BASE = "https://jwxt.gbu.edu.cn"
-        const val IAAA_BASE = "https://iaaa.gbu.edu.cn"
-        const val APP_ID = "gbu_jwxt"
-        const val CALLBACK = "$BASE/oauth/login/code"
+    private val normalizedBase: String get() = normalizeBaseUrl(baseUrl)
+    private val iaaaBase: String get() = deriveIaaaBase(normalizedBase)
+    private val callback: String get() = "$normalizedBase/oauth/login/code"
+    private val loginPage: String get() = "$iaaaBase/iaaa/oauth.jsp?appID=$APP_ID&redirectUrl=$callback"
 
-        private val LOGIN_PAGE = "$IAAA_BASE/iaaa/oauth.jsp?appID=$APP_ID&redirectUrl=${CALLBACK}"
+    /** 教务地址是否已配置（未配置时登录/同步应引导用户先填写）。 */
+    fun isConfigured(): Boolean = normalizedBase.isNotBlank()
+
+    companion object {
+        const val APP_ID = "gbu_jwxt"
+
+        /** 规范化教务地址：补协议、去尾斜杠，返回 "https://host"。空输入返回空串。 */
+        fun normalizeBaseUrl(raw: String): String {
+            var s = raw.trim()
+            if (s.isBlank()) return ""
+            if (!s.startsWith("http://") && !s.startsWith("https://")) s = "https://$s"
+            return s.trimEnd('/')
+        }
+
+        /** 由教务地址推导统一认证地址：host 去掉首个子域，换成 iaaa. 前缀。 */
+        fun deriveIaaaBase(baseUrl: String): String {
+            val host = baseUrl.removePrefix("https://").removePrefix("http://").substringBefore('/')
+            val labels = host.split('.')
+            val parent = if (labels.size >= 3) labels.drop(1).joinToString(".") else host
+            return "https://iaaa.$parent"
+        }
 
         fun defaultClient(): OkHttpClient =
             OkHttpClient.Builder()
@@ -64,11 +86,13 @@ class EduApi(
 
     /**
      * 统一身份认证登录。成功后会话 cookie 已写入 CookieJar。
+     * 教务地址未配置时返回 NetworkError（调用方应提示先填写地址）。
      */
     suspend fun login(userName: String, password: String): LoginResult = withContext(Dispatchers.IO) {
+        if (!isConfigured()) return@withContext LoginResult.NetworkError()
         try {
             // 1) 访问登录页种 cookie
-            client.newCall(Request.Builder().url(LOGIN_PAGE).build()).execute().use { }
+            client.newCall(Request.Builder().url(loginPage).build()).execute().use { }
 
             // 2) POST oauthlogin.do
             val body = FormBody.Builder()
@@ -78,13 +102,13 @@ class EduApi(
                 .add("randCode", "")
                 .add("smsCode", "")
                 .add("otpCode", "")
-                .add("redirUrl", CALLBACK)
+                .add("redirUrl", callback)
                 .build()
             val req = Request.Builder()
-                .url("$IAAA_BASE/iaaa/oauthlogin.do")
+                .url("$iaaaBase/iaaa/oauthlogin.do")
                 .post(body)
                 .header("X-Requested-With", "XMLHttpRequest")
-                .header("Referer", LOGIN_PAGE)
+                .header("Referer", loginPage)
                 .build()
             val resp = client.newCall(req).execute()
             val text = resp.body?.string() ?: return@withContext LoginResult.NetworkError()
@@ -93,9 +117,9 @@ class EduApi(
                 return@withContext LoginResult.WrongCredentials(login.errors?.msg)
             }
 
-            // 3) 带 token 回跳，建立 jwxt 会话
+            // 3) 带 token 回跳，建立教务会话
             client.newCall(
-                Request.Builder().url("$CALLBACK?_rand=1&token=${login.token}").build()
+                Request.Builder().url("$callback?_rand=1&token=${login.token}").build()
             ).execute().use { }
             LoginResult.Success
         } catch (e: Exception) {
@@ -162,10 +186,10 @@ class EduApi(
             runCatching {
                 val body = FormBody.Builder().add("xn", xn).add("xq", xq).build()
                 val req = Request.Builder()
-                    .url("$BASE/xszykb/queryxszykbzong")
+                    .url("$normalizedBase/xszykb/queryxszykbzong")
                     .post(body)
                     .header("X-Requested-With", "XMLHttpRequest")
-                    .header("Referer", "$BASE/authentication/main")
+                    .header("Referer", "$normalizedBase/authentication/main")
                     .build()
                 val text = client.newCall(req).execute().use { it.body?.string() ?: "" }
                 if (text.isBlank()) emptyList()
@@ -177,7 +201,7 @@ class EduApi(
     suspend fun fetchSemesters(): List<Xnxq> = withContext(Dispatchers.IO) {
         runCatching {
             val req = Request.Builder()
-                .url("$BASE/component/queryxnxqdata")
+                .url("$normalizedBase/component/queryxnxqdata")
                 .post(FormBody.Builder().build())
                 .header("X-Requested-With", "XMLHttpRequest")
                 .build()
@@ -191,7 +215,7 @@ class EduApi(
     suspend fun fetchCurrentXnxq(): Xnxq? = withContext(Dispatchers.IO) {
         runCatching {
             val req = Request.Builder()
-                .url("$BASE/component/querydangqianxnxq")
+                .url("$normalizedBase/component/querydangqianxnxq")
                 .post(FormBody.Builder().build())
                 .header("X-Requested-With", "XMLHttpRequest")
                 .build()
@@ -207,7 +231,7 @@ class EduApi(
     suspend fun fetchCurrentWeek(): Int? = withContext(Dispatchers.IO) {
         runCatching {
             val req = Request.Builder()
-                .url("$BASE/component/querydangqianzc")
+                .url("$normalizedBase/component/querydangqianzc")
                 .post(FormBody.Builder().build())
                 .header("X-Requested-With", "XMLHttpRequest")
                 .build()
@@ -237,10 +261,10 @@ class EduApi(
                     .add("sfckkc", "1")
                     .build()
                 val req = Request.Builder()
-                    .url("$BASE/kck/kcxxwh/queryKcxxwhList")
+                    .url("$normalizedBase/kck/kcxxwh/queryKcxxwhList")
                     .post(body)
                     .header("X-Requested-With", "XMLHttpRequest")
-                    .header("Referer", "$BASE/authentication/main")
+                    .header("Referer", "$normalizedBase/authentication/main")
                     .build()
                 val text = client.newCall(req).execute().use { it.body?.string() ?: "" }
                 if (text.isBlank()) break
@@ -274,10 +298,10 @@ class EduApi(
                     .add("pageNum", pageNum.toString()).add("pageSize", "200")
                     .build()
                 val req = Request.Builder()
-                    .url("$BASE/Xsxktz/queryRwxxcxList")
+                    .url("$normalizedBase/Xsxktz/queryRwxxcxList")
                     .post(body)
                     .header("X-Requested-With", "XMLHttpRequest")
-                    .header("Referer", "$BASE/authentication/main")
+                    .header("Referer", "$normalizedBase/authentication/main")
                     .build()
                 val text = client.newCall(req).execute().use { it.body?.string() ?: "" }
                 if (text.isBlank()) break
