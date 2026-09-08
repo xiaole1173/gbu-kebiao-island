@@ -16,48 +16,43 @@ import java.util.concurrent.TimeUnit
 
 /**
  * 教务系统（统一身份认证 + 课表接口）客户端。
- * 教务地址由用户在「设置 / 新手引导」中手动填写（默认不内置任何学校域名）；
- * 统一认证地址按「iaaa.<父域名>」约定由教务地址推导（如 <教务>.<父域名> → iaaa.<父域名>）。
+ * 统一认证地址与教务系统地址均由用户在「设置 / 新手引导」中手动填写
+ * （不在 App 内置、不推导任何学校域名）。
  *
  * 登录链路（已验证，无验证码时一次通过）：
- *   GET  oauth.jsp?appID=...&redirectUrl=...        → 种会话 cookie
- *   POST /iaaa/oauthlogin.do (form)                  → {"success":true,"token":"..."}
- *   GET  <教务>/oauth/login/code?_rand=1&token=TOKEN  → 落地 /authentication/main 建立会话
+ *   GET  <认证>/iaaa/oauth.jsp?appID=...&redirectUrl=...   → 种会话 cookie
+ *   POST <认证>/iaaa/oauthlogin.do (form)                  → {"success":true,"token":"..."}
+ *   GET  <教务>/oauth/login/code?_rand=1&token=TOKEN        → 落地 /authentication/main 建立会话
  *
  * 仅获取本人课表数据，绝不批量爬取。
  */
 class EduApi(
+    /** 统一身份认证地址（如 https://iaaa.学校域名） */
+    private val authBaseUrl: String = "",
+    /** 教务系统地址（如 https://jwxt.学校域名） */
     private val baseUrl: String = "",
     private val client: OkHttpClient = defaultClient()
 ) {
     // coerceInputValues: 服务端个别记录（如备注行）JSJC/KSJC 可能为 null，强制为默认值
     private val json = Json { ignoreUnknownKeys = true; coerceInputValues = true }
 
+    private val normalizedAuth: String get() = normalizeBaseUrl(authBaseUrl)
     private val normalizedBase: String get() = normalizeBaseUrl(baseUrl)
-    private val iaaaBase: String get() = deriveIaaaBase(normalizedBase)
     private val callback: String get() = "$normalizedBase/oauth/login/code"
-    private val loginPage: String get() = "$iaaaBase/iaaa/oauth.jsp?appID=$APP_ID&redirectUrl=$callback"
+    private val loginPage: String get() = "$normalizedAuth/iaaa/oauth.jsp?appID=$APP_ID&redirectUrl=$callback"
 
-    /** 教务地址是否已配置（未配置时登录/同步应引导用户先填写）。 */
-    fun isConfigured(): Boolean = normalizedBase.isNotBlank()
+    /** 两个地址是否都已配置（未配置时登录/同步应引导用户先填写）。 */
+    fun isConfigured(): Boolean = normalizedAuth.isNotBlank() && normalizedBase.isNotBlank()
 
     companion object {
         const val APP_ID = "gbu_jwxt"
 
-        /** 规范化教务地址：补协议、去尾斜杠，返回 "https://host"。空输入返回空串。 */
+        /** 规范化地址：补协议、去尾斜杠，返回 "https://host"。空输入返回空串。 */
         fun normalizeBaseUrl(raw: String): String {
             var s = raw.trim()
             if (s.isBlank()) return ""
             if (!s.startsWith("http://") && !s.startsWith("https://")) s = "https://$s"
             return s.trimEnd('/')
-        }
-
-        /** 由教务地址推导统一认证地址：host 去掉首个子域，换成 iaaa. 前缀。 */
-        fun deriveIaaaBase(baseUrl: String): String {
-            val host = baseUrl.removePrefix("https://").removePrefix("http://").substringBefore('/')
-            val labels = host.split('.')
-            val parent = if (labels.size >= 3) labels.drop(1).joinToString(".") else host
-            return "https://iaaa.$parent"
         }
 
         fun defaultClient(): OkHttpClient =
@@ -105,7 +100,7 @@ class EduApi(
                 .add("redirUrl", callback)
                 .build()
             val req = Request.Builder()
-                .url("$iaaaBase/iaaa/oauthlogin.do")
+                .url("$normalizedAuth/iaaa/oauthlogin.do")
                 .post(body)
                 .header("X-Requested-With", "XMLHttpRequest")
                 .header("Referer", loginPage)

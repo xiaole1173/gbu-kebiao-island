@@ -44,9 +44,11 @@ class SyncWorker(
         }
 
         val db = AppDatabase.get(applicationContext)
-        val baseUrl = settings.first().eduBaseUrl
-        if (baseUrl.isBlank()) return Result.success() // 未配置教务地址，跳过自动同步
-        val api = EduApi(baseUrl = baseUrl)
+        val s = settings.first()
+        if (s.eduAuthBaseUrl.isBlank() || s.eduBaseUrl.isBlank()) {
+            return Result.success() // 未配置地址，跳过自动同步
+        }
+        val api = EduApi(authBaseUrl = s.eduAuthBaseUrl, baseUrl = s.eduBaseUrl)
         val repo = SyncRepository(api, db.courseDao(), db.libraryCourseDao())
 
         return try {

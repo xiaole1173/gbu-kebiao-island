@@ -36,7 +36,9 @@ data class AppSettings(
     /** 节次时间表（可编辑） */
     val sections: List<SectionTime> = DefaultSections.list,
     /** 教务系统地址（学生手动填写，如 https://jwxt.学校域名；空 = 未设置） */
-    val eduBaseUrl: String = ""
+    val eduBaseUrl: String = "",
+    /** 统一身份认证地址（学生手动填写，如 https://iaaa.学校域名；空 = 未设置） */
+    val eduAuthBaseUrl: String = ""
 )
 
 class SettingsRepository(context: Context) {
@@ -54,7 +56,8 @@ class SettingsRepository(context: Context) {
             currentSemesterId = prefs[KEY_SEMESTER] ?: "",
             termStartDate = prefs[KEY_TERM_START] ?: "",
             sections = DefaultSections.decode(prefs[KEY_SECTIONS] ?: ""),
-            eduBaseUrl = prefs[KEY_EDU_BASE_URL] ?: ""
+            eduBaseUrl = prefs[KEY_EDU_BASE_URL] ?: "",
+            eduAuthBaseUrl = prefs[KEY_EDU_AUTH_BASE_URL] ?: ""
         )
     }
 
@@ -79,6 +82,8 @@ class SettingsRepository(context: Context) {
 
     suspend fun setEduBaseUrl(url: String) = dataStore.edit { it[KEY_EDU_BASE_URL] = url.trim() }
 
+    suspend fun setEduAuthBaseUrl(url: String) = dataStore.edit { it[KEY_EDU_AUTH_BASE_URL] = url.trim() }
+
     private companion object {
         val KEY_EDU_USER = stringPreferencesKey("edu_user_name")
         val KEY_AUTO_SYNC = booleanPreferencesKey("auto_sync")
@@ -90,5 +95,6 @@ class SettingsRepository(context: Context) {
         val KEY_TERM_START = stringPreferencesKey("term_start")
         val KEY_SECTIONS = stringPreferencesKey("sections_json")
         val KEY_EDU_BASE_URL = stringPreferencesKey("edu_base_url")
+        val KEY_EDU_AUTH_BASE_URL = stringPreferencesKey("edu_auth_base_url")
     }
 }

@@ -74,6 +74,7 @@ fun SettingsScreen(viewModel: SettingsViewModel = viewModel()) {
     var userName by remember { mutableStateOf(settings?.eduUserName ?: "") }
     var password by remember { mutableStateOf("") }
     var eduUrl by remember { mutableStateOf(settings?.eduBaseUrl ?: "") }
+    var eduAuthUrl by remember { mutableStateOf(settings?.eduAuthBaseUrl ?: "") }
     // 提醒分钟数：拖动时只改本地，松手才提交（避免高频写 DataStore/重排提醒卡顿）
     var remindBefore by remember { mutableStateOf(settings?.remindBeforeMinutes ?: 10) }
 
@@ -128,7 +129,14 @@ fun SettingsScreen(viewModel: SettingsViewModel = viewModel()) {
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.outline
                     )
-                    // 教务系统地址：学生手动填写（不在 App 内置任何学校域名）
+                    // 统一身份认证 + 教务系统地址：学生手动填写（不在 App 内置任何学校域名）
+                    OutlinedTextField(
+                        value = eduAuthUrl,
+                        onValueChange = { eduAuthUrl = it },
+                        label = { Text("统一认证地址（如 https://iaaa.学校域名）") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
                     OutlinedTextField(
                         value = eduUrl,
                         onValueChange = { eduUrl = it },
@@ -137,10 +145,13 @@ fun SettingsScreen(viewModel: SettingsViewModel = viewModel()) {
                         modifier = Modifier.fillMaxWidth()
                     )
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Button(onClick = { viewModel.setEduBaseUrl(eduUrl) }) { Text("保存地址") }
+                        Button(onClick = {
+                            viewModel.setEduAuthBaseUrl(eduAuthUrl)
+                            viewModel.setEduBaseUrl(eduUrl)
+                        }) { Text("保存地址") }
                         if ((settings?.eduBaseUrl ?: "").isNotBlank()) {
                             Text(
-                                "当前：${settings?.eduBaseUrl}",
+                                "当前：${settings?.eduAuthBaseUrl ?: ""} / ${settings?.eduBaseUrl}",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.outline
                             )
@@ -166,7 +177,7 @@ fun SettingsScreen(viewModel: SettingsViewModel = viewModel()) {
                         if (hasCredentials) {
                             if (password.isNotBlank()) {
                                 // 重输了密码 → 更新密码并同步
-                                Button(onClick = { viewModel.saveCredentialsAndSync(userName, password, eduUrl) }) {
+                                Button(onClick = { viewModel.saveCredentialsAndSync(userName, password, eduUrl, eduAuthUrl) }) {
                                     Text("更新密码并同步")
                                 }
                             } else {
@@ -176,7 +187,7 @@ fun SettingsScreen(viewModel: SettingsViewModel = viewModel()) {
                                 Text("清除账号")
                             }
                         } else {
-                            Button(onClick = { viewModel.saveCredentialsAndSync(userName, password, eduUrl) }) {
+                            Button(onClick = { viewModel.saveCredentialsAndSync(userName, password, eduUrl, eduAuthUrl) }) {
                                 Text("保存并同步")
                             }
                         }

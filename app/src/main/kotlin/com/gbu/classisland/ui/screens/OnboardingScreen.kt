@@ -103,6 +103,7 @@ private fun LoginStep(
     var userName by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var eduUrl by remember { mutableStateOf(settings?.eduBaseUrl ?: "") }
+    var eduAuthUrl by remember { mutableStateOf(settings?.eduAuthBaseUrl ?: "") }
 
     Column(
         modifier = Modifier
@@ -125,6 +126,13 @@ private fun LoginStep(
             color = MaterialTheme.colorScheme.outline
         )
         Spacer(Modifier.height(16.dp))
+        OutlinedTextField(
+            value = eduAuthUrl,
+            onValueChange = { eduAuthUrl = it },
+            label = { Text("统一认证地址（如 https://iaaa.学校域名）") },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth()
+        )
         OutlinedTextField(
             value = eduUrl,
             onValueChange = { eduUrl = it },
@@ -149,7 +157,7 @@ private fun LoginStep(
             modifier = Modifier.fillMaxWidth()
         )
         Button(
-            onClick = { viewModel.saveCredentialsAndSync(userName, password, eduUrl) },
+            onClick = { viewModel.saveCredentialsAndSync(userName, password, eduUrl, eduAuthUrl) },
             modifier = Modifier.fillMaxWidth().height(50.dp)
         ) {
             Text(if (hasCredentials) "更新密码并同步" else "登录并同步", fontSize = 16.sp)

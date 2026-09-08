@@ -36,7 +36,6 @@ import com.gbu.classisland.navigation.AppNavHost
 import com.gbu.classisland.ui.screens.OnboardingScreen
 import com.gbu.classisland.ui.theme.ClassIslandTheme
 import com.gbu.classisland.update.UpdateManager
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
@@ -73,18 +72,6 @@ private fun FirstRunGateAndNav() {
             val info = UpdateManager.checkLatest(context)
             if (info != null && info.versionCode > UpdateManager.localVersionCode(context)) {
                 updateInfo = info
-            }
-        }
-    }
-
-    // 已有用户（完成过引导）升级后：一次性继承默认教务地址（从应用自有仓库拉取，APK 不内置学校域名）；
-    // 新安装用户（guided=false）不拉取，在引导/设置中手动填写
-    LaunchedEffect(guided) {
-        if (guided) {
-            val repo = com.gbu.classisland.data.settings.SettingsRepository(context)
-            if (repo.settings.first().eduBaseUrl.isBlank()) {
-                val url = com.gbu.classisland.edu.SchoolConfig.fetchEduBaseUrl()
-                if (url.isNotBlank()) repo.setEduBaseUrl(url)
             }
         }
     }
