@@ -12,6 +12,7 @@ import com.gbu.classisland.model.DefaultSections
 import com.gbu.classisland.model.SectionTime
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.onEach
 
 private val Context.dataStore by preferencesDataStore(name = "settings")
 
@@ -59,7 +60,7 @@ class SettingsRepository(context: Context) {
             eduBaseUrl = prefs[KEY_EDU_BASE_URL] ?: "",
             eduAuthBaseUrl = prefs[KEY_EDU_AUTH_BASE_URL] ?: ""
         )
-    }
+    }.onEach { cached = it }
 
     suspend fun setEduUserName(name: String) = dataStore.edit { it[KEY_EDU_USER] = name }
 
@@ -84,8 +85,16 @@ class SettingsRepository(context: Context) {
 
     suspend fun setEduAuthBaseUrl(url: String) = dataStore.edit { it[KEY_EDU_AUTH_BASE_URL] = url.trim() }
 
-    private companion object {
-        val KEY_EDU_USER = stringPreferencesKey("edu_user_name")
+    companion object {
+        /**
+         * 进程内最后一次读到的设置。供 ViewModel 作为 StateFlow 的初始值使用：
+         * 这样界面第一帧就能拿到真实设置（例如当前教学周），不会先渲染默认值再跳变。
+         */
+        @Volatile
+        var cached: AppSettings? = null
+            private set
+
+        private val KEY_EDU_USER = stringPreferencesKey("edu_user_name")
         val KEY_AUTO_SYNC = booleanPreferencesKey("auto_sync")
         val KEY_REMIND_BEFORE = intPreferencesKey("remind_before_min")
         val KEY_REMIND_AFTER = booleanPreferencesKey("remind_after")

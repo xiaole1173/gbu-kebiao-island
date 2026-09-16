@@ -52,6 +52,7 @@ object LiveUpdateNotifier {
     const val EXTRA_WAIT_START = "live_wait_start"
 
     private const val NOTIF_ID = 4713
+    /** 运行中进度链的 alarm 请求码（self-sustaining，同一时刻只有一条链）。 */
     private const val TICK_RC = 9981
     private const val ACTION_RC = 4714
     // 品牌配色（课表小岛）：海洋蓝=上课进度 / 青绿=候课倒计时 / 沙金=最后冲刺+里程碑
@@ -106,10 +107,61 @@ object LiveUpdateNotifier {
     /** 测试流程的时间倍率。 */
     private const val TEST_SCALE = 12
 
+    /** 当前是否有灵动岛通知正在显示。 */
+    fun isActive(context: Context): Boolean =
+        context.getSystemService(NotificationManager::class.java)
+            .activeNotifications.any { it.id == NOTIF_ID }
+
+    /** 「关闭」灵动岛：取消通知并终止当前运行链。 */
     fun cancel(context: Context) {
         NotificationManagerCompat.from(context).cancel(NOTIF_ID)
+        cancelTick(context, TICK_RC)
+    }
+
+    /**
+     * 丢弃尚未触发的进度 tick 闹钟。
+     *
+     * 用途是清理幽灵闹钟：tick 链只应在「岛正在显示」时存在，一旦岛没了，任何排着队的 tick
+     * 都是无主残留（早期版本把岛的唤起做成独立 kickoff 闹钟，升级后会在系统里留下这种残留）。
+     * 注意调用方必须先确认 `!isActive(context)`，否则会打断正在跑的进度链。
+     */
+    fun cancelPendingTick(context: Context) = cancelTick(context, TICK_RC)
+
+    /**
+     * 立即开始 / 接管一节课的灵动岛：先结束上一条链，再显示本节课，随后由 tick 链自我维持到下课。
+     * 候课阶段（now < start）显示倒计时，上课中显示进度；到下课由 timeoutAfter 自动移除。
+     *
+     * 岛的开始由「提前提醒触发 / 上一节课结束」两处驱动，不再单独排 kickoff 闹钟——
+     * 之前 kickoff 与提醒共用请求码，提醒触发的重排会把还没触发的 kickoff 顶掉，导致岛永不出现。
+     */
+    fun startIsland(
+        context: Context,
+        name: String,
+        room: String,
+        teacher: String,
+        start: LocalDateTime,
+        end: LocalDateTime,
+        now: LocalDateTime,
+    ) {
+        if (!end.isAfter(now)) return
+        cancel(context) // 接管：结束上一条链，避免两条链互相顶掉
+        val startMs = start.atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
+        val endMs = end.atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
+        val t = System.currentTimeMillis()
+        post(context, name, room, teacher, startMs, endMs, anchorMs = startMs, scale = 1, waitStartMs = t)
+        scheduleTick(context, name, room, teacher, startMs, endMs, t + tickIntervalMs(1), anchorMs = startMs, scale = 1, waitStartMs = t)
+    }
+
+    private fun cancelTick(context: Context, requestCode: Int) {
         val am = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
-        am.cancel(tickPending(context, null, null, null, 0L, 0L, 0L, 1, 0L, false))
+        val intent = Intent(context, com.gbu.classisland.reminder.ReminderScheduler.ReminderReceiver::class.java)
+            .setAction(ACTION_TICK)
+        am.cancel(
+            PendingIntent.getBroadcast(
+                context, requestCode, intent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+        )
     }
 
     /** 测试按钮：12 倍速完整流程演示 —— 虚拟 15 分钟候课（实际 75 秒）+ 虚拟 45 分钟上课（实际 3.75 分钟）。 */
@@ -121,38 +173,12 @@ object LiveUpdateNotifier {
         val name = "测试灵动岛"
         val room = "示例教室"
         val teacher = "示例教师"
+        cancel(context)
         post(context, name, room, teacher, startMs, endMs, anchorMs = now, scale = scale, waitStartMs = now)
         scheduleTick(context, name, room, teacher, startMs, endMs, now + tickIntervalMs(scale), anchorMs = now, scale = scale, waitStartMs = now)
     }
 
-    /**
-     * 为一节课安排灵动岛：开课前 [leadMinutes] 分钟出现候课倒计时，开课转为进度条；
-     * 已开课则立即显示。首 tick 由精确闹钟驱动。
-     */
-    fun scheduleForClass(
-        context: Context,
-        name: String,
-        room: String,
-        teacher: String,
-        start: LocalDateTime,
-        end: LocalDateTime,
-        now: LocalDateTime,
-        leadMinutes: Int = 0,
-    ) {
-        if (!end.isAfter(now)) return
-        val startMs = start.atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
-        val endMs = end.atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
-        if (start.isAfter(now)) {
-            val firstTick = maxOf(startMs - leadMinutes * 60_000L, System.currentTimeMillis())
-            scheduleTick(context, name, room, teacher, startMs, endMs, firstTick, anchorMs = startMs, scale = 1, waitStartMs = firstTick)
-        } else {
-            val t = System.currentTimeMillis()
-            post(context, name, room, teacher, startMs, endMs, anchorMs = startMs, scale = 1, waitStartMs = t)
-            scheduleTick(context, name, room, teacher, startMs, endMs, t + tickIntervalMs(1), anchorMs = startMs, scale = 1, waitStartMs = t)
-        }
-    }
-
-    /** 每 tick 刷新进度并续排下一次；边界处准点切换或清除。 */
+    /** 每 tick 刷新进度并续排下一次；返回 true 表示本节课已下课（链自然结束）。 */
     fun onTick(
         context: Context,
         name: String,
@@ -163,23 +189,18 @@ object LiveUpdateNotifier {
         anchorMs: Long,
         scale: Int,
         waitStartMs: Long,
-    ) {
+    ): Boolean {
         val realNow = System.currentTimeMillis()
         val now = anchorMs + (realNow - anchorMs) * scale
-        if (now >= endMs) {
-            cancel(context)
-            return
-        }
+        if (now >= endMs) return true // 到下课：通知由 timeoutAfter 自动移除，tick 链自然终止
         // 用户已手动划掉通知 → 不再重发，终止整条 tick 链（否则每个 tick 都会把它重新弹出来）
         val nm = context.getSystemService(NotificationManager::class.java)
-        if (nm.activeNotifications.none { it.id == NOTIF_ID }) {
-            cancel(context)
-            return
-        }
+        if (nm.activeNotifications.none { it.id == NOTIF_ID }) return false
         post(context, name, room, teacher, startMs, endMs, anchorMs, scale, waitStartMs)
         val boundary = if (now < startMs) startMs else endMs
         val stepMs = minOf(tickIntervalMs(scale), ((boundary - now) / scale).coerceAtLeast(1L))
         scheduleTick(context, name, room, teacher, startMs, endMs, realNow + stepMs, anchorMs, scale, waitStartMs)
+        return false
     }
 
     private fun tickIntervalMs(scale: Int) = (PROGRESS_STEP_VIRTUAL_MS / scale).coerceAtLeast(1_000L)
@@ -309,7 +330,7 @@ object LiveUpdateNotifier {
         waitStartMs: Long,
     ) {
         val am = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
-        val pi = tickPending(context, name, room, teacher, startMs, endMs, anchorMs, scale, waitStartMs, true)
+        val pi = tickPending(context, name, room, teacher, startMs, endMs, anchorMs, scale, waitStartMs)
         try {
             if (Build.VERSION.SDK_INT < 31 || am.canScheduleExactAlarms()) {
                 am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, atMillis, pi)
@@ -331,7 +352,6 @@ object LiveUpdateNotifier {
         anchorMs: Long,
         scale: Int,
         waitStartMs: Long,
-        create: Boolean,
     ): PendingIntent {
         val intent = Intent(context, com.gbu.classisland.reminder.ReminderScheduler.ReminderReceiver::class.java).apply {
             action = ACTION_TICK
@@ -344,6 +364,7 @@ object LiveUpdateNotifier {
             putExtra(EXTRA_SCALE, scale)
             putExtra(EXTRA_WAIT_START, waitStartMs)
         }
+        // 单请求码：同一时刻只有一条进度链，每个 tick 覆写下一次；cancel 也用它匹配取消。
         return PendingIntent.getBroadcast(
             context, TICK_RC, intent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE

@@ -3,6 +3,8 @@
 package com.gbu.classisland.ui.screens
 
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -87,6 +89,15 @@ fun WeekScreen(viewModel: WeekViewModel = viewModel()) {
         mutableStateOf(today.dayOfWeek.value == 2 || today.dayOfWeek.value == 4)
     }
 
+    // 记录「用户主动要求」的周次：只有目标周与它一致时才播放滑动动画。
+    // App 启动时周次会由占位值自动定位到当前教学周（如第 2 周），那属于定位而不是翻页，
+    // 必须瞬时完成，否则会看到一次多余的「切页」动画。
+    var userRequestedWeek by remember { mutableStateOf<Int?>(null) }
+    fun goWeek(target: Int) {
+        userRequestedWeek = target
+        viewModel.selectWeek(target)
+    }
+
     Column(modifier = Modifier.fillMaxSize()) {
         WeekHeader(
             selectedWeek = selectedWeek,
@@ -95,7 +106,7 @@ fun WeekScreen(viewModel: WeekViewModel = viewModel()) {
             semesters = availableSemesters,
             selectedSemester = effectiveSemester,
             onSelectSemester = viewModel::selectSemester,
-            onSelectWeek = viewModel::selectWeek,
+            onSelectWeek = { week -> goWeek(week) },
             onAddCourse = { showAdd = true },
             axisLabel = if (isTueThuMode) "周二四时段" else "周一三五时段",
             onToggleAxis = { isTueThuMode = !isTueThuMode }
@@ -108,11 +119,14 @@ fun WeekScreen(viewModel: WeekViewModel = viewModel()) {
                 .fillMaxWidth()
                 // 左右滑动切换上下周
                 .swipeForPage(
-                    onPrev = { viewModel.selectWeek((selectedWeek - 1).coerceAtLeast(1)) },
-                    onNext = { viewModel.selectWeek(selectedWeek + 1) }
+                    onPrev = { goWeek((selectedWeek - 1).coerceAtLeast(1)) },
+                    onNext = { goWeek(selectedWeek + 1) }
                 ),
             transitionSpec = {
-                if (targetState > initialState) {
+                if (userRequestedWeek != targetState) {
+                    // 自动定位（启动 / 跨周 / 切回当前学期）：瞬时切换，不做任何过渡动画
+                    EnterTransition.None togetherWith ExitTransition.None
+                } else if (targetState > initialState) {
                     (slideInHorizontally(tween(340)) { it } + fadeIn(tween(340))) togetherWith
                         (slideOutHorizontally(tween(340)) { -it / 3 } + fadeOut(tween(230)))
                 } else {
